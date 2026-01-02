@@ -1,0 +1,25 @@
+# Streamlit Dashboard Dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+RUN pip install --no-cache-dir \
+    streamlit==1.28.1 \
+    pandas==2.1.4 \
+    plotly==5.17.0 \
+    sqlalchemy==2.0.23 \
+    psycopg2-binary==2.9.9 \
+    python-dotenv==1.0.0
+
+# Copy dashboard
+COPY dashboard.py .
+
+# Streamlit config
+RUN mkdir -p /root/.streamlit
+RUN echo '[server]\nheadless = true\nport = 8501\nenableCORS = false\nenableXsrfProtection = false\n' > /root/.streamlit/config.toml
+RUN echo '[theme]\nprimaryColor = "#00d4ff"\nbackgroundColor = "#0a0a0f"\nsecondaryBackgroundColor = "#12121a"\ntextColor = "#e8e8ed"\n' >> /root/.streamlit/config.toml
+
+EXPOSE 8501
+
+CMD ["streamlit", "run", "dashboard.py", "--server.address=0.0.0.0"]

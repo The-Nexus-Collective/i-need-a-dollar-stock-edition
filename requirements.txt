@@ -1,0 +1,13 @@
+SQLAlchemy==2.0.23
+psycopg2-binary==2.9.9
+requests==2.31.0
+streamlit==1.28.1
+pandas==2.1.4
+numpy==1.26.2
+python-dotenv==1.0.0
+ccxt==4.1.63
+schedule==1.2.1
+pytz==2023.3.post1
+plotly==5.17.0
+seaborn==0.13.0
+ta==0.11.0

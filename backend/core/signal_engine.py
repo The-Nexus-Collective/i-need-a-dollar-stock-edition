@@ -1,0 +1,293 @@
+"""
+Signal Engine - Batch Grok sentiment analysis with retry logic
+
+This module handles:
+1. Single batch API call to Grok for all 10 coins
+2. Parsing multi-line responses
+3. Retry logic with exponential backoff (3 attempts)
+4. Score calculation: sentiment × (narrative / 100)
+"""
+
+import asyncio
+import hashlib
+import logging
+import os
+import re
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+from uuid import uuid4
+
+import httpx
+
+logger = logging.getLogger(__name__)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+TOP_COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'BNB', 'ADA', 'AVAX', 'TRX', 'LINK']
+
+# Grok API settings
+GROK_MAX_RETRIES = 3
+GROK_RETRY_DELAY_BASE = 2  # Base delay in seconds (exponential backoff)
+GROK_TIMEOUT = 60  # API timeout in seconds
+
+# The exact prompt as specified
+GROK_BATCH_PROMPT = """Right now, give me sentiment (-100 to +100) and narrative strength (0–100) for each of these coins, one short line per coin, nothing else:
+BTC, ETH, SOL, XRP, DOGE, BNB, ADA, AVAX, TRX, LINK"""
+
+
+@dataclass
+class CoinSentiment:
+    """Parsed sentiment data for a single coin"""
+    coin: str
+    sentiment: float  # -100 to +100
+    narrative: float  # 0 to 100
+    score: float  # sentiment × (narrative / 100)
+    
+    @classmethod
+    def calculate_score(cls, sentiment: float, narrative: float) -> float:
+        """Calculate combined score"""
+        return sentiment * (narrative / 100)
+
+
+@dataclass
+class BatchSentimentResult:
+    """Result from a batch Grok API call"""
+    success: bool
+    batch_id: str
+    timestamp: datetime
+    raw_response: str
+    response_hash: str
+    sentiments: Dict[str, CoinSentiment]  # coin -> CoinSentiment
+    error_message: Optional[str] = None
+    retry_count: int = 0
+
+
+class GrokBatchClient:
+    """
+    Grok API client for batch sentiment analysis.
+    
+    Features:
+    - Single API call for all 10 coins
+    - 3x retry with exponential backoff
+    - Robust response parsing
+    """
+    
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.base_url = "https://api.x.ai/v1"
+        self.client = httpx.AsyncClient(timeout=GROK_TIMEOUT)
+    
+    async def get_batch_sentiment(self) -> BatchSentimentResult:
+        """
+        Get sentiment for all coins in a single API call.
+        
+        Returns:
+            BatchSentimentResult with all parsed sentiments
+        """
+        batch_id = uuid4().hex[:16]
+        timestamp = datetime.utcnow()
+        
+        last_error = None
+        
+        for attempt in range(GROK_MAX_RETRIES):
+            try:
+                logger.info(f"Grok API call attempt {attempt + 1}/{GROK_MAX_RETRIES}")
+                
+                response = await self._call_api()
+                
+                if response:
+                    # Parse the response
+                    sentiments = self._parse_response(response)
+                    response_hash = hashlib.sha256(response.encode()).hexdigest()
+                    
+                    logger.info(f"Successfully parsed {len(sentiments)} coin sentiments")
+                    
+                    return BatchSentimentResult(
+                        success=True,
+                        batch_id=batch_id,
+                        timestamp=timestamp,
+                        raw_response=response,
+                        response_hash=response_hash,
+                        sentiments=sentiments,
+                        retry_count=attempt
+                    )
+                    
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"Grok API attempt {attempt + 1} failed: {last_error}")
+                
+                if attempt < GROK_MAX_RETRIES - 1:
+                    # Exponential backoff
+                    delay = GROK_RETRY_DELAY_BASE ** (attempt + 1)
+                    logger.info(f"Retrying in {delay} seconds...")
+                    await asyncio.sleep(delay)
+        
+        # All retries failed
+        logger.error(f"All {GROK_MAX_RETRIES} Grok API attempts failed")
+        
+        return BatchSentimentResult(
+            success=False,
+            batch_id=batch_id,
+            timestamp=timestamp,
+            raw_response="",
+            response_hash="",
+            sentiments={},
+            error_message=f"API failed after {GROK_MAX_RETRIES} attempts: {last_error}",
+            retry_count=GROK_MAX_RETRIES
+        )
+    
+    async def _call_api(self) -> str:
+        """Make the actual API call to Grok"""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": GROK_BATCH_PROMPT
+                }
+            ],
+            "model": "grok-3",  # Updated from grok-beta (deprecated)
+            "stream": False,
+            "temperature": 0.1  # Low temperature for consistent responses
+        }
+        
+        response = await self.client.post(
+            f"{self.base_url}/chat/completions",
+            headers=headers,
+            json=payload
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            return data['choices'][0]['message']['content']
+        else:
+            raise Exception(f"API error {response.status_code}: {response.text}")
+    
+    def _parse_response(self, response: str) -> Dict[str, CoinSentiment]:
+        """
+        Parse multi-line Grok response into coin sentiments.
+        
+        Expected format (one line per coin):
+        BTC: 45, 80
+        ETH: -20, 65
+        ...
+        
+        Handles various formats flexibly.
+        """
+        sentiments = {}
+        
+        # Split into lines
+        lines = response.strip().split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Try to find coin and extract numbers
+            parsed = self._parse_line(line)
+            if parsed:
+                coin, sentiment, narrative = parsed
+                if coin in TOP_COINS:
+                    score = CoinSentiment.calculate_score(sentiment, narrative)
+                    sentiments[coin] = CoinSentiment(
+                        coin=coin,
+                        sentiment=sentiment,
+                        narrative=narrative,
+                        score=score
+                    )
+        
+        # Validate we got all coins (or log warning)
+        missing = set(TOP_COINS) - set(sentiments.keys())
+        if missing:
+            logger.warning(f"Missing coins in response: {missing}")
+        
+        return sentiments
+    
+    def _parse_line(self, line: str) -> Optional[Tuple[str, float, float]]:
+        """
+        Parse a single line to extract coin, sentiment, and narrative.
+        
+        Handles formats like:
+        - "BTC: 45, 80"
+        - "BTC - sentiment: 45, narrative: 80"
+        - "BTC 45 80"
+        - "Bitcoin (BTC): +45, 80%"
+        """
+        line_upper = line.upper()
+        
+        # Find which coin this line is about
+        coin = None
+        for c in TOP_COINS:
+            if c in line_upper:
+                coin = c
+                break
+        
+        if not coin:
+            return None
+        
+        # Extract all numbers from the line
+        numbers = re.findall(r'-?\d+(?:\.\d+)?', line)
+        
+        if len(numbers) >= 2:
+            try:
+                sentiment = float(numbers[0])
+                narrative = float(numbers[1])
+                
+                # Clamp to valid ranges
+                sentiment = max(-100, min(100, sentiment))
+                narrative = max(0, min(100, narrative))
+                
+                return (coin, sentiment, narrative)
+            except ValueError:
+                pass
+        
+        return None
+    
+    async def close(self):
+        """Close the HTTP client"""
+        await self.client.aclose()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONVENIENCE FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_grok_client: Optional[GrokBatchClient] = None
+
+
+def get_grok_client() -> GrokBatchClient:
+    """Get or create the global Grok client"""
+    global _grok_client
+    if _grok_client is None:
+        api_key = os.getenv('XAI_API_KEY', '')
+        if not api_key:
+            logger.warning("XAI_API_KEY not set!")
+        _grok_client = GrokBatchClient(api_key)
+    return _grok_client
+
+
+async def fetch_all_sentiments() -> BatchSentimentResult:
+    """
+    Convenience function to fetch all sentiments in one call.
+    
+    Returns:
+        BatchSentimentResult with all coin data
+    """
+    client = get_grok_client()
+    return await client.get_batch_sentiment()
+
+
+async def close_grok_client():
+    """Close the global Grok client"""
+    global _grok_client
+    if _grok_client:
+        await _grok_client.close()
+        _grok_client = None
