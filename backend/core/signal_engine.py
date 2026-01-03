@@ -291,3 +291,85 @@ async def close_grok_client():
     if _grok_client:
         await _grok_client.close()
         _grok_client = None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MAIN SERVICE LOOP
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def run_signal_engine():
+    """
+    Main signal engine service loop.
+    Periodically fetches sentiments from Grok and publishes to Redis.
+    """
+    from events import get_event_bus, SignalGeneratedEvent
+    
+    logger.info("Starting Signal Engine service...")
+    
+    # Check for API key
+    api_key = os.getenv('XAI_API_KEY', '')
+    if not api_key:
+        logger.error("XAI_API_KEY not set! Signal engine cannot run.")
+        return
+    
+    bus = get_event_bus()
+    await bus.connect()
+    
+    # Fetch interval (every 60 seconds)
+    FETCH_INTERVAL = 60
+    
+    logger.info(f"Signal engine running. Fetching every {FETCH_INTERVAL}s")
+    
+    while True:
+        try:
+            # Fetch sentiments from Grok
+            result = await fetch_all_sentiments()
+            
+            if result.success and result.sentiments:
+                logger.info(f"Fetched {len(result.sentiments)} coin sentiments")
+                
+                # Publish each signal to Redis
+                for coin, sentiment in result.sentiments.items():
+                    event = SignalGeneratedEvent(
+                        signal_id=uuid4(),
+                        symbol=f"{coin}USDT",
+                        direction="long" if sentiment.score > 0 else "short",
+                        score=abs(sentiment.score),
+                        sentiment_raw=sentiment.sentiment,
+                        narrative_strength=sentiment.narrative,
+                        grok_response=f"Sentiment: {sentiment.sentiment}, Narrative: {sentiment.narrative}",
+                        filters_passed=True,
+                        source="grok_batch"
+                    )
+                    await bus.publish(event)
+                    logger.debug(f"Published signal for {coin}: score={sentiment.score:.1f}")
+            else:
+                logger.warning(f"Failed to fetch sentiments: {result.error_message}")
+            
+        except Exception as e:
+            logger.error(f"Error in signal engine loop: {e}")
+        
+        # Wait before next fetch
+        await asyncio.sleep(FETCH_INTERVAL)
+
+
+async def main():
+    """Main entry point for the signal engine service"""
+    logger.info("=" * 60)
+    logger.info("Signal Engine starting")
+    logger.info("=" * 60)
+    
+    try:
+        await run_signal_engine()
+    except KeyboardInterrupt:
+        logger.info("Signal engine stopped by user")
+    finally:
+        await close_grok_client()
+
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    asyncio.run(main())
