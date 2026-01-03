@@ -221,8 +221,8 @@ export default function PositionsPage() {
         api.getPositions('open').catch(() => []),
         api.getPositions('closed').catch(() => []),
       ])
-      setPositions(openData)
-      setClosedPositions(closedData)
+      setPositions(openData as Position[])
+      setClosedPositions(closedData as Position[])
     } catch (error) {
       console.error('Failed to fetch positions:', error)
     } finally {
