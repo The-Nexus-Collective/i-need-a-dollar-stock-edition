@@ -6,11 +6,16 @@ from .schemas import (
     RiskCheckRequestedEvent,
     RiskApprovedEvent,
     RiskRejectedEvent,
+    RiskLimitBreachEvent,
     OrderSubmittedEvent,
     OrderFilledEvent,
+    PositionOpenedEvent,
     PositionUpdatedEvent,
+    PositionClosedEvent,
     CircuitBreakerEvent,
     PortfolioSnapshotEvent,
+    HeartbeatEvent,
+    PriceUpdateEvent,
 )
 
 __all__ = [
@@ -22,9 +27,14 @@ __all__ = [
     "RiskCheckRequestedEvent",
     "RiskApprovedEvent",
     "RiskRejectedEvent",
+    "RiskLimitBreachEvent",
     "OrderSubmittedEvent",
     "OrderFilledEvent",
+    "PositionOpenedEvent",
     "PositionUpdatedEvent",
+    "PositionClosedEvent",
     "CircuitBreakerEvent",
     "PortfolioSnapshotEvent",
+    "HeartbeatEvent",
+    "PriceUpdateEvent",
 ]

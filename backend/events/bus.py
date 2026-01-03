@@ -69,7 +69,10 @@ class EventBus:
     }
     
     def __init__(self, redis_url: str = None):
-        self.redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6379")
+        # Handle empty string case
+        env_url = os.getenv("REDIS_URL", "").strip()
+        self.redis_url = redis_url or env_url or "redis://localhost:6379"
+        logger.info(f"EventBus using Redis URL: {self.redis_url[:30]}...")
         self._redis: Optional[Redis] = None
         self._pubsub: Optional[redis.client.PubSub] = None
         self._subscribers: Dict[str, List[Callable]] = {}

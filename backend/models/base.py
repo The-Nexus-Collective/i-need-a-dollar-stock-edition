@@ -19,11 +19,27 @@ DATABASE_URL = os.getenv(
     "postgresql://trading_user:trading_secret_2024@localhost:5432/trading_platform"
 )
 
-# Convert to async URL if needed
-if DATABASE_URL.startswith("postgresql://"):
-    ASYNC_DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
-else:
-    ASYNC_DATABASE_URL = DATABASE_URL
+# Convert to async URL if needed and handle SSL for asyncpg
+ASYNC_DATABASE_URL = DATABASE_URL
+if ASYNC_DATABASE_URL.startswith("postgresql://"):
+    ASYNC_DATABASE_URL = ASYNC_DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+
+# Remove sslmode from URL for asyncpg (it uses 'ssl' parameter instead)
+# Digital Ocean uses ?sslmode=require which asyncpg doesn't understand
+import ssl
+import re
+
+# Check if SSL is required and remove sslmode from URL
+use_ssl = "sslmode=require" in ASYNC_DATABASE_URL or "sslmode=verify" in ASYNC_DATABASE_URL
+ASYNC_DATABASE_URL = re.sub(r'[?&]sslmode=[^&]*', '', ASYNC_DATABASE_URL)
+# Clean up URL if it ends with ? or has double &&
+ASYNC_DATABASE_URL = ASYNC_DATABASE_URL.rstrip('?').replace('&&', '&').rstrip('&')
+
+# SSL context for asyncpg
+ssl_context = ssl.create_default_context() if use_ssl else None
+if ssl_context:
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
 
 # Sync engine (for migrations)
 sync_engine = create_engine(
@@ -35,12 +51,14 @@ sync_engine = create_engine(
 )
 
 # Async engine (for application)
+connect_args = {"ssl": ssl_context} if ssl_context else {}
 engine = create_async_engine(
     ASYNC_DATABASE_URL,
     echo=False,
     pool_pre_ping=True,
     pool_size=10,
-    max_overflow=20
+    max_overflow=20,
+    connect_args=connect_args
 )
 
 # Async session factory
