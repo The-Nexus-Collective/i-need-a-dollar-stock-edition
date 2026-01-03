@@ -143,11 +143,18 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# CORS middleware
+# CORS middleware - allow configurable origins for production
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else []
+DEFAULT_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8501"]
+ALL_ORIGINS = CORS_ORIGINS + DEFAULT_ORIGINS
+
+# If CORS_ALLOW_ALL is set, allow all origins (useful for development/testing)
+allow_all_origins = os.getenv("CORS_ALLOW_ALL", "false").lower() == "true"
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8501"],
-    allow_credentials=True,
+    allow_origins=["*"] if allow_all_origins else ALL_ORIGINS,
+    allow_credentials=not allow_all_origins,  # Can't use credentials with wildcard
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -652,10 +659,9 @@ async def get_system_status():
 # WEBSOCKET ENDPOINT
 # ═══════════════════════════════════════════════════════════════════════════════
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, channel: str = "all"):
+async def handle_websocket(websocket: WebSocket, channel: str = "all"):
     """
-    WebSocket endpoint for real-time updates.
+    Core WebSocket handler for real-time updates.
     
     Channels:
     - all: All events
@@ -695,6 +701,29 @@ async def websocket_endpoint(websocket: WebSocket, channel: str = "all"):
     except WebSocketDisconnect:
         await manager.disconnect(websocket, channel)
         logger.info(f"WebSocket disconnected from channel: {channel}")
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket, channel: str = "all"):
+    """WebSocket endpoint at /ws"""
+    await handle_websocket(websocket, channel)
+
+
+@app.websocket("/")
+async def websocket_root_endpoint(websocket: WebSocket, channel: str = "all"):
+    """
+    WebSocket endpoint at root path.
+    
+    This is a fallback for when a reverse proxy strips the /ws prefix.
+    """
+    await handle_websocket(websocket, channel)
+
+
+# Legacy endpoint for backward compatibility
+@app.websocket("/ws/live")
+async def websocket_endpoint_legacy(websocket: WebSocket, channel: str = "all"):
+    """Legacy WebSocket endpoint at /ws/live"""
+    await handle_websocket(websocket, channel)
 
 
 if __name__ == "__main__":

@@ -172,10 +172,6 @@ services:
       - "3000:3000"
     depends_on:
       - gateway
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
     restart: unless-stopped
 
   # ═══════════════════════════════════════════════════════════════════════════

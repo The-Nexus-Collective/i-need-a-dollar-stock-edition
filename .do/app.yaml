@@ -60,6 +60,9 @@ services:
       - key: DATABASE_URL
         scope: RUN_TIME
         value: ${db.DATABASE_URL}
+      - key: CORS_ALLOW_ALL
+        scope: RUN_TIME
+        value: "true"
     routes:
       - path: /api
       - path: /ws
