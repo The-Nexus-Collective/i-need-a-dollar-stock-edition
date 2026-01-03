@@ -16,6 +16,7 @@ from .schemas import (
     PortfolioSnapshotEvent,
     HeartbeatEvent,
     PriceUpdateEvent,
+    deserialize_event,
 )
 
 __all__ = [
@@ -37,4 +38,5 @@ __all__ = [
     "PortfolioSnapshotEvent",
     "HeartbeatEvent",
     "PriceUpdateEvent",
+    "deserialize_event",
 ]
