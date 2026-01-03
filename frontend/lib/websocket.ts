@@ -51,7 +51,14 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       return
     }
 
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000/ws'
+    // Compute WebSocket URL dynamically from current location
+    let wsUrl: string
+    if (typeof window !== 'undefined') {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      wsUrl = `${protocol}//${window.location.host}/ws`
+    } else {
+      wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000/ws'
+    }
     const url = `${wsUrl}?channel=${channel}`
 
     try {
