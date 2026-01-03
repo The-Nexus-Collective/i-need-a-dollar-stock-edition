@@ -330,19 +330,31 @@ async def run_signal_engine():
                 
                 # Publish each signal to Redis
                 for coin, sentiment in result.sentiments.items():
+                    # Calculate combined score and determine action
+                    sentiment_score = sentiment.score  # -100 to +100
+                    narrative_strength = sentiment.narrative  # 0 to 100
+                    combined_score = sentiment_score * (narrative_strength / 100)
+                    confidence = min(abs(narrative_strength) / 100, 1.0)
+                    
+                    # Determine action based on score
+                    if abs(combined_score) < 20:
+                        action = "hold"
+                    elif combined_score > 0:
+                        action = "long"
+                    else:
+                        action = "short"
+                    
                     event = SignalGeneratedEvent(
-                        signal_id=uuid4(),
-                        symbol=f"{coin}USDT",
-                        direction="long" if sentiment.score > 0 else "short",
-                        score=abs(sentiment.score),
-                        sentiment_raw=sentiment.sentiment,
-                        narrative_strength=sentiment.narrative,
-                        grok_response=f"Sentiment: {sentiment.sentiment}, Narrative: {sentiment.narrative}",
-                        filters_passed=True,
-                        source="grok_batch"
+                        coin=coin,
+                        sentiment_score=sentiment_score,
+                        narrative_strength=narrative_strength,
+                        combined_score=combined_score,
+                        confidence=confidence,
+                        recommended_action=action,
+                        raw_response=sentiment.sentiment,
                     )
                     await bus.publish(event)
-                    logger.debug(f"Published signal for {coin}: score={sentiment.score:.1f}")
+                    logger.debug(f"Published signal for {coin}: combined={combined_score:.1f}, action={action}")
             else:
                 logger.warning(f"Failed to fetch sentiments: {result.error_message}")
             
