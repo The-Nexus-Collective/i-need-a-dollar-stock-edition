@@ -27,24 +27,36 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 TOP_COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'BNB', 'ADA', 'AVAX', 'TRX', 'LINK']
+TOP_STOCKS = ['AAPL', 'NVDA', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'AVGO', 'NFLX', 'ADBE']
 
 # Grok API settings
 GROK_MAX_RETRIES = 3
 GROK_RETRY_DELAY_BASE = 2  # Base delay in seconds (exponential backoff)
 GROK_TIMEOUT = 60  # API timeout in seconds
 
-# The exact prompt as specified
+# Crypto prompt
+GROK_CRYPTO_PROMPT = """Right now, give me sentiment (-100 to +100) and narrative strength (0–100) for each of these coins, one short line per coin, nothing else:
+{symbols}"""
+
+# Stock prompt
+GROK_STOCK_PROMPT = """Right now, give me sentiment (-100 to +100) and narrative strength (0–100) for each of these stocks based on current market sentiment, analyst views, and news. One short line per stock, format: SYMBOL: sentiment, narrative, key_driver
+
+Stocks: {symbols}"""
+
+# Legacy prompt for backwards compatibility
 GROK_BATCH_PROMPT = """Right now, give me sentiment (-100 to +100) and narrative strength (0–100) for each of these coins, one short line per coin, nothing else:
 BTC, ETH, SOL, XRP, DOGE, BNB, ADA, AVAX, TRX, LINK"""
 
 
 @dataclass
 class CoinSentiment:
-    """Parsed sentiment data for a single coin"""
-    coin: str
+    """Parsed sentiment data for a single coin/stock"""
+    coin: str  # Symbol (works for both coins and stocks)
     sentiment: float  # -100 to +100
     narrative: float  # 0 to 100
     score: float  # sentiment × (narrative / 100)
+    driver: str = ""  # Key driver (e.g., "ETF inflows", "earnings beat")
+    asset_type: str = "crypto"  # 'crypto' or 'stock'
     
     @classmethod
     def calculate_score(cls, sentiment: float, narrative: float) -> float:
@@ -70,9 +82,10 @@ class GrokBatchClient:
     Grok API client for batch sentiment analysis.
     
     Features:
-    - Single API call for all 10 coins
+    - Single API call for all 10 coins/stocks
     - 3x retry with exponential backoff
     - Robust response parsing
+    - Multi-asset support (crypto and stocks)
     """
     
     def __init__(self, api_key: str):
@@ -80,9 +93,17 @@ class GrokBatchClient:
         self.base_url = "https://api.x.ai/v1"
         self.client = httpx.AsyncClient(timeout=GROK_TIMEOUT)
     
-    async def get_batch_sentiment(self) -> BatchSentimentResult:
+    async def get_batch_sentiment(
+        self,
+        symbols: Optional[List[str]] = None,
+        asset_type: str = "crypto"
+    ) -> BatchSentimentResult:
         """
-        Get sentiment for all coins in a single API call.
+        Get sentiment for all coins/stocks in a single API call.
+        
+        Args:
+            symbols: Optional list of symbols to query (defaults based on asset_type)
+            asset_type: 'crypto' or 'stock'
         
         Returns:
             BatchSentimentResult with all parsed sentiments
@@ -90,20 +111,29 @@ class GrokBatchClient:
         batch_id = uuid4().hex[:16]
         timestamp = datetime.utcnow()
         
+        # Determine symbols and prompt based on asset type
+        if symbols is None:
+            symbols = TOP_COINS if asset_type == "crypto" else TOP_STOCKS
+        
+        if asset_type == "stock":
+            prompt = GROK_STOCK_PROMPT.format(symbols=", ".join(symbols))
+        else:
+            prompt = GROK_CRYPTO_PROMPT.format(symbols=", ".join(symbols))
+        
         last_error = None
         
         for attempt in range(GROK_MAX_RETRIES):
             try:
-                logger.info(f"Grok API call attempt {attempt + 1}/{GROK_MAX_RETRIES}")
+                logger.info(f"Grok API call attempt {attempt + 1}/{GROK_MAX_RETRIES} for {asset_type}")
                 
-                response = await self._call_api()
+                response = await self._call_api(prompt)
                 
                 if response:
                     # Parse the response
-                    sentiments = self._parse_response(response)
+                    sentiments = self._parse_response(response, symbols, asset_type)
                     response_hash = hashlib.sha256(response.encode()).hexdigest()
                     
-                    logger.info(f"Successfully parsed {len(sentiments)} coin sentiments")
+                    logger.info(f"Successfully parsed {len(sentiments)} {asset_type} sentiments")
                     
                     return BatchSentimentResult(
                         success=True,
@@ -139,18 +169,21 @@ class GrokBatchClient:
             retry_count=GROK_MAX_RETRIES
         )
     
-    async def _call_api(self) -> str:
+    async def _call_api(self, prompt: str = None) -> str:
         """Make the actual API call to Grok"""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
         
+        # Use provided prompt or default
+        content = prompt or GROK_BATCH_PROMPT
+        
         payload = {
             "messages": [
                 {
                     "role": "user",
-                    "content": GROK_BATCH_PROMPT
+                    "content": content
                 }
             ],
             "model": "grok-3",  # Updated from grok-beta (deprecated)
@@ -170,18 +203,27 @@ class GrokBatchClient:
         else:
             raise Exception(f"API error {response.status_code}: {response.text}")
     
-    def _parse_response(self, response: str) -> Dict[str, CoinSentiment]:
+    def _parse_response(
+        self,
+        response: str,
+        symbols: List[str] = None,
+        asset_type: str = "crypto"
+    ) -> Dict[str, CoinSentiment]:
         """
-        Parse multi-line Grok response into coin sentiments.
+        Parse multi-line Grok response into sentiments.
         
-        Expected format (one line per coin):
+        Expected format (one line per symbol):
         BTC: 45, 80
-        ETH: -20, 65
+        AAPL: -20, 65, earnings beat
         ...
         
         Handles various formats flexibly.
         """
         sentiments = {}
+        
+        # Default to crypto symbols
+        if symbols is None:
+            symbols = TOP_COINS if asset_type == "crypto" else TOP_STOCKS
         
         # Split into lines
         lines = response.strip().split('\n')
@@ -191,46 +233,56 @@ class GrokBatchClient:
             if not line:
                 continue
             
-            # Try to find coin and extract numbers
-            parsed = self._parse_line(line)
+            # Try to find symbol and extract numbers
+            parsed = self._parse_line(line, symbols)
             if parsed:
-                coin, sentiment, narrative = parsed
-                if coin in TOP_COINS:
+                symbol, sentiment, narrative, driver = parsed
+                if symbol in symbols:
                     score = CoinSentiment.calculate_score(sentiment, narrative)
-                    sentiments[coin] = CoinSentiment(
-                        coin=coin,
+                    sentiments[symbol] = CoinSentiment(
+                        coin=symbol,
                         sentiment=sentiment,
                         narrative=narrative,
-                        score=score
+                        score=score,
+                        driver=driver,
+                        asset_type=asset_type
                     )
         
-        # Validate we got all coins (or log warning)
-        missing = set(TOP_COINS) - set(sentiments.keys())
+        # Validate we got all symbols (or log warning)
+        missing = set(symbols) - set(sentiments.keys())
         if missing:
-            logger.warning(f"Missing coins in response: {missing}")
+            logger.warning(f"Missing symbols in response: {missing}")
         
         return sentiments
     
-    def _parse_line(self, line: str) -> Optional[Tuple[str, float, float]]:
+    def _parse_line(
+        self,
+        line: str,
+        symbols: List[str] = None
+    ) -> Optional[Tuple[str, float, float, str]]:
         """
-        Parse a single line to extract coin, sentiment, and narrative.
+        Parse a single line to extract symbol, sentiment, narrative, and driver.
         
         Handles formats like:
         - "BTC: 45, 80"
+        - "AAPL: 65, 80, earnings beat"
         - "BTC - sentiment: 45, narrative: 80"
         - "BTC 45 80"
         - "Bitcoin (BTC): +45, 80%"
         """
+        if symbols is None:
+            symbols = TOP_COINS + TOP_STOCKS
+        
         line_upper = line.upper()
         
-        # Find which coin this line is about
-        coin = None
-        for c in TOP_COINS:
-            if c in line_upper:
-                coin = c
+        # Find which symbol this line is about
+        symbol = None
+        for s in symbols:
+            if s in line_upper:
+                symbol = s
                 break
         
-        if not coin:
+        if not symbol:
             return None
         
         # Extract all numbers from the line
@@ -245,7 +297,15 @@ class GrokBatchClient:
                 sentiment = max(-100, min(100, sentiment))
                 narrative = max(0, min(100, narrative))
                 
-                return (coin, sentiment, narrative)
+                # Try to extract driver (text after the numbers)
+                driver = ""
+                # Look for text after the last number
+                parts = line.split(',')
+                if len(parts) >= 3:
+                    # Get everything after the second comma as driver
+                    driver = ','.join(parts[2:]).strip()
+                
+                return (symbol, sentiment, narrative, driver)
             except ValueError:
                 pass
         

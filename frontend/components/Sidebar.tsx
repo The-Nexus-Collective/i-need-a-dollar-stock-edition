@@ -15,6 +15,7 @@ import {
   Wallet,
   Activity,
   Zap,
+  BarChart3,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -35,6 +36,7 @@ interface SidebarProps {
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/' },
+  { icon: BarChart3, label: 'Stocks', href: '/stocks' },
   { icon: TrendingUp, label: 'Positions', href: '/positions' },
   { icon: History, label: 'History', href: '/history' },
   { icon: Shield, label: 'Risk', href: '/risk' },
@@ -70,7 +72,7 @@ export function Sidebar({ accountData, isConnected }: SidebarProps) {
           </div>
           <div>
             <h1 className="font-semibold text-text-primary tracking-tight text-sm">I Need A Dollar</h1>
-            <p className="text-[10px] text-text-muted uppercase tracking-widest">Crypto Sentiment Bot</p>
+            <p className="text-[10px] text-text-muted uppercase tracking-widest">AI Trading Terminal</p>
           </div>
         </motion.div>
         

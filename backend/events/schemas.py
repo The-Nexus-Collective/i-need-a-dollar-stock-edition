@@ -59,6 +59,10 @@ class BaseEvent(BaseModel):
     correlation_id: Optional[UUID] = None  # For tracking related events
     metadata: Dict[str, Any] = Field(default_factory=dict)
     
+    # Multi-asset support
+    asset_type: str = "crypto"  # 'crypto' or 'stock'
+    account_id: Optional[str] = None  # Which account this event relates to
+    
     class Config:
         use_enum_values = True
         json_encoders = {

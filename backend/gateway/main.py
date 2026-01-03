@@ -694,6 +694,141 @@ async def get_volatility_regime():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# STOCK TRADING ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/stocks/market-status", tags=["Stocks"])
+async def get_market_status():
+    """
+    Get current US stock market status.
+    
+    Returns:
+        - is_open: Whether market is currently open
+        - status_text: Human-readable status
+        - next_event: Time until next open/close
+        - should_flatten: Whether positions should be closed
+    """
+    try:
+        from core.market_hours import get_market_hours_manager
+        manager = get_market_hours_manager()
+        status = manager.get_status()
+        return status.to_dict()
+    except Exception as e:
+        return {
+            "is_open": False,
+            "status_text": "Unknown",
+            "error": str(e)
+        }
+
+
+@app.get("/api/stocks/regime", tags=["Stocks"])
+async def get_stock_regime():
+    """
+    Get current stock market regime based on VIX.
+    
+    Returns:
+        - vix_value: Current VIX level
+        - regime: low_vol, normal, high_vol, or crisis
+        - score_threshold: Dynamic threshold for this regime
+        - should_trade: Whether to trade in current regime
+    """
+    try:
+        from core.stock_regime import get_stock_regime_detector
+        detector = get_stock_regime_detector()
+        regime = await detector.get_regime()
+        return regime.to_dict()
+    except Exception as e:
+        return {
+            "vix_value": 20.0,
+            "regime": "normal",
+            "score_threshold": 70,
+            "should_trade": True,
+            "error": str(e)
+        }
+
+
+@app.get("/api/stocks/unified-regime", tags=["Stocks"])
+async def get_unified_regime():
+    """
+    Get unified regime info across both crypto and stocks.
+    
+    Returns:
+        - crypto: BTC ATR-based regime
+        - stock: VIX-based regime
+    """
+    try:
+        from core.filters import get_current_regime_info
+        from core.stock_regime import get_stock_regime_detector
+        
+        crypto_regime = get_current_regime_info()
+        
+        stock_detector = get_stock_regime_detector()
+        stock_regime = await stock_detector.get_regime()
+        
+        return {
+            "crypto": crypto_regime,
+            "stock": stock_regime.to_dict(),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/stocks/portfolio", tags=["Stocks"])
+async def get_multi_portfolio():
+    """
+    Get portfolio summary across all asset types.
+    
+    Returns:
+        - crypto: Crypto portfolio (100k USDT)
+        - stock: Stock portfolio (100k USD)
+        - total: Combined USD value
+    """
+    try:
+        from core.multi_account import get_multi_account_manager
+        manager = get_multi_account_manager()
+        
+        # Ensure initialized
+        if not manager._initialized:
+            await manager.initialize()
+        
+        summary = await manager.get_portfolio_summary()
+        return summary.to_dict()
+    except Exception as e:
+        return {
+            "crypto": {"equity": 100000, "currency": "USDT"},
+            "stock": {"equity": 100000, "currency": "USD"},
+            "error": str(e)
+        }
+
+
+@app.get("/api/stocks/hype", tags=["Stocks"])
+async def get_stock_hype(symbols: str = "PLTR,RTX,LMT"):
+    """
+    Get X hype scores for specified stocks.
+    
+    Args:
+        symbols: Comma-separated stock symbols
+    
+    Returns:
+        - Dict of symbol -> hype score
+    """
+    try:
+        from integrations.x_client import get_x_hype_detector
+        detector = get_x_hype_detector()
+        
+        symbol_list = [s.strip().upper() for s in symbols.split(",")]
+        scores = await detector.get_hype_scores(symbol_list)
+        
+        return {
+            symbol: score.to_dict() 
+            for symbol, score in scores.items()
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # WEBSOCKET ENDPOINT
 # ═══════════════════════════════════════════════════════════════════════════════
 

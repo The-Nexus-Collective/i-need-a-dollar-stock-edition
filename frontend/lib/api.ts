@@ -291,6 +291,95 @@ class ApiClient {
       executed_count: number
     }>('/api/decisions/stats')
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STOCK TRADING ENDPOINTS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async getMarketStatus() {
+    return this.fetch<{
+      is_open: boolean
+      current_time: string
+      timezone: string
+      time_to_open_seconds: number | null
+      time_to_close_seconds: number | null
+      should_flatten: boolean
+      flatten_reason: string | null
+      status_text: string
+      next_event: string
+    }>('/api/stocks/market-status')
+  }
+
+  async getStockRegime() {
+    return this.fetch<{
+      vix_value: number
+      regime: string
+      regime_display: string
+      score_threshold: number
+      should_trade: boolean
+      timestamp: string
+    }>('/api/stocks/regime')
+  }
+
+  async getUnifiedRegime() {
+    return this.fetch<{
+      crypto: {
+        regime: string
+        regime_display: string
+        threshold: number
+        btc_atr_percent: number
+      }
+      stock: {
+        vix_value: number
+        regime: string
+        regime_display: string
+        score_threshold: number
+        should_trade: boolean
+      }
+      timestamp: string
+    }>('/api/stocks/unified-regime')
+  }
+
+  async getMultiPortfolio() {
+    return this.fetch<{
+      timestamp: string
+      crypto: {
+        equity: number
+        currency: string
+        positions: number
+        pnl: number
+        pnl_pct: number
+      }
+      stock: {
+        equity: number
+        currency: string
+        positions: number
+        pnl: number
+        pnl_pct: number
+      }
+      total: {
+        equity_usd: number
+        pnl_usd: number
+      }
+    }>('/api/stocks/portfolio')
+  }
+
+  async getStockHype(symbols: string = 'PLTR,RTX,LMT') {
+    return this.fetch<Record<string, {
+      symbol: string
+      score: number
+      tweet_count: number
+      total_engagement: number
+      avg_engagement: number
+      sentiment_score: number
+      analyzed_at: string
+      top_tweets: Array<{
+        id: string
+        text: string
+        engagement: number
+      }>
+    }>>(`/api/stocks/hype?symbols=${encodeURIComponent(symbols)}`)
+  }
 }
 
 export const api = new ApiClient(API_URL)

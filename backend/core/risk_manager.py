@@ -106,10 +106,23 @@ class RiskManager:
         coin: str,
         proposed_quantity: float,
         entry_price: float,
-        portfolio: Dict
+        portfolio: Dict,
+        asset_type: str = "crypto"
     ) -> Tuple[bool, List[str], float]:
         """
         Check if proposed position violates limits.
+        
+        Harmonic limits apply across asset types:
+        - 15% per asset
+        - 70% max deployed
+        - 40% sector concentration (altcoins for crypto, non-big-tech for stocks)
+        
+        Args:
+            coin: Symbol (coin or stock ticker)
+            proposed_quantity: Number of units to trade
+            entry_price: Entry price per unit
+            portfolio: Current portfolio state
+            asset_type: 'crypto' or 'stock'
         
         Returns:
             (approved, rejection_reasons, adjusted_quantity)
@@ -120,24 +133,24 @@ class RiskManager:
         total_equity = portfolio['total_equity']
         proposed_value = proposed_quantity * entry_price
         
-        # Check per-asset limit (10% default)
-        per_asset_limit = self.limits[RiskLimits.POSITION_LIMIT_PER_ASSET]
+        # Check per-asset limit (15% harmonic default)
+        per_asset_limit = self.limits.get(RiskLimits.POSITION_LIMIT_PER_ASSET, 0.15)
         max_per_asset = total_equity * per_asset_limit
         
         if proposed_value > max_per_asset:
             adjusted_qty = max_per_asset / entry_price
             rejections.append(
-                f"Per-asset limit ({per_asset_limit*100}%): reduced from {proposed_quantity:.4f} to {adjusted_qty:.4f}"
+                f"Per-asset limit ({per_asset_limit*100:.0f}%): reduced from {proposed_quantity:.4f} to {adjusted_qty:.4f}"
             )
         
-        # Check total deployed limit (80% default)
-        max_deployed = self.limits[RiskLimits.MAX_DEPLOYED]
+        # Check total deployed limit (70% harmonic default)
+        max_deployed = self.limits.get(RiskLimits.MAX_DEPLOYED, 0.70)
         current_deployed = portfolio['positions_value']
         remaining_capacity = (total_equity * max_deployed) - current_deployed
         
         if proposed_value > remaining_capacity:
             if remaining_capacity <= 0:
-                rejections.append(f"Max deployed limit ({max_deployed*100}%) reached")
+                rejections.append(f"Max deployed limit ({max_deployed*100:.0f}%) reached")
                 return False, rejections, 0
             
             adjusted_qty = remaining_capacity / entry_price
@@ -145,29 +158,36 @@ class RiskManager:
                 f"Deployment limit: reduced to {adjusted_qty:.4f} (remaining capacity: ${remaining_capacity:.2f})"
             )
         
-        # Check altcoin limit (30% default) for non-BTC/ETH
-        if coin not in ['BTC', 'ETH']:
-            altcoin_limit = self.limits[RiskLimits.POSITION_LIMIT_ALTCOINS]
+        # Check sector concentration limit (40% harmonic default)
+        # For crypto: non-BTC/ETH (altcoins)
+        # For stocks: non-big-tech stocks
+        major_symbols = ['BTC', 'ETH'] if asset_type == "crypto" else [
+            'AAPL', 'NVDA', 'MSFT', 'GOOGL', 'AMZN', 'META'  # Big tech
+        ]
+        
+        if coin not in major_symbols:
+            sector_limit = self.limits.get(RiskLimits.POSITION_LIMIT_ALTCOINS, 0.40)
             
-            # Get current altcoin exposure
+            # Get current sector exposure
             positions = await self.get_open_positions()
-            altcoin_exposure = sum(
+            sector_exposure = sum(
                 float(p.quantity) * float(p.current_price or p.entry_price)
                 for p in positions
-                if p.coin not in ['BTC', 'ETH']
+                if p.coin not in major_symbols
             )
             
-            max_altcoin = total_equity * altcoin_limit
-            remaining_altcoin = max_altcoin - altcoin_exposure
+            max_sector = total_equity * sector_limit
+            remaining_sector = max_sector - sector_exposure
             
-            if proposed_value > remaining_altcoin:
-                if remaining_altcoin <= 0:
-                    rejections.append(f"Altcoin limit ({altcoin_limit*100}%) reached")
+            if proposed_value > remaining_sector:
+                sector_name = "Altcoin" if asset_type == "crypto" else "Non-big-tech"
+                if remaining_sector <= 0:
+                    rejections.append(f"{sector_name} limit ({sector_limit*100:.0f}%) reached")
                     return False, rejections, 0
                 
-                adjusted_qty = min(adjusted_qty, remaining_altcoin / entry_price)
+                adjusted_qty = min(adjusted_qty, remaining_sector / entry_price)
                 rejections.append(
-                    f"Altcoin limit: capped at {adjusted_qty:.4f}"
+                    f"{sector_name} limit: capped at {adjusted_qty:.4f}"
                 )
         
         approved = adjusted_qty > 0

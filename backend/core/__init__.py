@@ -92,6 +92,47 @@ from .account import (
     simulate_margin_call_check,
 )
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# MULTI-ASSET SUPPORT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Multi-Account Manager
+from .multi_account import (
+    MultiAccountManager,
+    get_multi_account_manager,
+    init_multi_account_manager,
+)
+
+# Market Hours
+from .market_hours import (
+    MarketHoursManager,
+    get_market_hours_manager,
+    MarketStatus,
+)
+
+# Stock Simulator
+from .stock_simulator import (
+    StockSimulator,
+    get_stock_simulator,
+    StockQuote,
+    StockFill,
+)
+
+# Stock Regime Detection
+from .stock_regime import (
+    StockRegimeDetector,
+    get_stock_regime_detector,
+    StockRegimeInfo,
+)
+
+# Stock Strategy
+from .stock_strategy import (
+    StockStrategy,
+    get_stock_strategy,
+    StockSentiment,
+    StockDecision,
+)
+
 __all__ = [
     # Signal
     "GrokBatchClient",
@@ -144,4 +185,22 @@ __all__ = [
     "get_readiness_checker",
     "check_live_readiness",
     "is_ready_for_live",
+    # Multi-Asset Support
+    "MultiAccountManager",
+    "get_multi_account_manager",
+    "init_multi_account_manager",
+    "MarketHoursManager",
+    "get_market_hours_manager",
+    "MarketStatus",
+    "StockSimulator",
+    "get_stock_simulator",
+    "StockQuote",
+    "StockFill",
+    "StockRegimeDetector",
+    "get_stock_regime_detector",
+    "StockRegimeInfo",
+    "StockStrategy",
+    "get_stock_strategy",
+    "StockSentiment",
+    "StockDecision",
 ]
