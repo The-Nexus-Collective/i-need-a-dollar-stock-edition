@@ -56,6 +56,10 @@ services:
     http_port: 8000
     instance_size_slug: basic-xxs  # $5/mo - upgrade as needed
     instance_count: 1
+    envs:
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        value: ${db.DATABASE_URL}
     routes:
       - path: /api
       - path: /ws
@@ -63,8 +67,9 @@ services:
       - path: /health
     health_check:
       http_path: /health
-      initial_delay_seconds: 10
+      initial_delay_seconds: 30
       period_seconds: 30
+      timeout_seconds: 10
   # ═══════════════════════════════════════════════════════════════════════════
   # FRONTEND (Next.js)
   # ═══════════════════════════════════════════════════════════════════════════
