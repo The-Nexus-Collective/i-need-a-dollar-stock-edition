@@ -17,6 +17,7 @@ import { CoinGrid } from '@/components/CoinTile'
 import { PositionsList } from '@/components/PositionCard'
 import { TradeHistory } from '@/components/TradeHistory'
 import { DecisionLog } from '@/components/DecisionLog'
+import { SystemStatus, HealthData } from '@/components/SystemStatus'
 
 import { api } from '@/lib/api'
 import { useWebSocket, useTradingStore } from '@/lib/websocket'
@@ -120,6 +121,10 @@ export default function Dashboard() {
     force_trade_enabled: false,
   })
 
+  // System health state
+  const [healthData, setHealthData] = useState<HealthData | null>(null)
+  const [healthLoading, setHealthLoading] = useState(true)
+
   // WebSocket
   const { isConnected, lastMessage } = useWebSocket({
     channel: 'all',
@@ -147,7 +152,7 @@ export default function Dashboard() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [portfolioData, historyData, positionsData, signalsData, tradesData, decisionsData, statsData, regimeData, velocityData] = await Promise.all([
+        const [portfolioData, historyData, positionsData, signalsData, tradesData, decisionsData, statsData, regimeData, velocityData, healthResult] = await Promise.all([
           api.getPortfolio().catch(() => null),
           api.getPortfolioHistory(500).catch(() => []),
           api.getPositions('open').catch(() => []),
@@ -157,6 +162,7 @@ export default function Dashboard() {
           api.getDecisionStats().catch(() => null),
           api.getVolatilityRegime().catch(() => null),
           api.getVelocityMetrics().catch(() => null),
+          api.getSystemHealth().catch(() => null),
         ])
 
         if (portfolioData) {
@@ -229,11 +235,17 @@ export default function Dashboard() {
           setVelocityMetrics(velocityData)
         }
 
+        if (healthResult) {
+          setHealthData(healthResult)
+        }
+        setHealthLoading(false)
+
         setLastRefresh(new Date())
       } catch (error) {
         console.error('Failed to fetch data:', error)
       } finally {
         setLoading(false)
+        setHealthLoading(false)
       }
     }
 
@@ -567,14 +579,14 @@ export default function Dashboard() {
               <DecisionLog decisions={decisions} stats={decisionStats} />
             </motion.div>
 
-            {/* System Status */}
+            {/* System Status - Trading Mode & Regime */}
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.3 }}
               className="glass-card p-5"
             >
-              <span className="text-label block mb-4">System Status</span>
+              <span className="text-label block mb-4">Trading Info</span>
               
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -626,15 +638,15 @@ export default function Dashboard() {
                   </span>
                 </div>
               </div>
+            </motion.div>
 
-              <div className="mt-4 p-3 rounded-lg bg-accent-emerald/10 border border-accent-emerald/20">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-accent-emerald animate-pulse" />
-                  <span className="text-xs text-accent-emerald font-medium">
-                    All Systems Operational
-                  </span>
-                </div>
-              </div>
+            {/* System Health - Real-time service status and errors */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.35 }}
+            >
+              <SystemStatus health={healthData} isLoading={healthLoading} />
             </motion.div>
           </div>
         </div>

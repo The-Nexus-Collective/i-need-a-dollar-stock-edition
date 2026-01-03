@@ -5,4 +5,6 @@ export { CoinTile, CoinGrid } from './CoinTile'
 export { PositionCard, PositionsList } from './PositionCard'
 export { TradeHistory } from './TradeHistory'
 export { DecisionLog } from './DecisionLog'
+export { SystemStatus } from './SystemStatus'
+export type { HealthData, ServiceStatus, LogEntry } from './SystemStatus'
 

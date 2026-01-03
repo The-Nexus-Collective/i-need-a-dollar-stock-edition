@@ -239,7 +239,7 @@ async def verify_schema():
         ("trades", "simulated_slippage"),
         ("signals", "id"),
         ("portfolio_snapshots", "timestamp"),
-        ("account_state", "id"),
+        ("account_state", "account_id"),  # Primary key is account_id, not id
     ]
     
     try:

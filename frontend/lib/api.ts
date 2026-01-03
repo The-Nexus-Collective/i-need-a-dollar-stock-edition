@@ -258,6 +258,32 @@ class ApiClient {
     }>('/api/system/regime')
   }
 
+  // Health Check
+  async getSystemHealth() {
+    return this.fetch<{
+      overall: 'healthy' | 'degraded' | 'unhealthy'
+      services: Record<string, {
+        name: string
+        status: 'healthy' | 'unhealthy' | 'unknown'
+        error?: string
+        latency_ms?: number
+        last_check?: string
+      }>
+      error_count: number
+      warning_count: number
+      recent_errors: Array<{
+        timestamp: string
+        level: 'ERROR' | 'WARNING'
+        logger: string
+        service: string
+        message: string
+        module: string
+        line: number
+      }>
+      last_check: string
+    }>('/api/system/health')
+  }
+
   // Trading Decisions
   async getDecisions(limit = 24) {
     return this.fetch<Array<{

@@ -84,8 +84,9 @@ CREATE TABLE IF NOT EXISTS account_equity_history (
     PRIMARY KEY (id, timestamp)
 );
 
--- Convert to hypertable for efficient time-series queries
-SELECT create_hypertable('account_equity_history', 'timestamp', if_not_exists => TRUE);
+-- Index for time-series queries (standard PostgreSQL, no TimescaleDB)
+CREATE INDEX IF NOT EXISTS idx_account_equity_timestamp 
+    ON account_equity_history (timestamp DESC);
 
 -- Indexes for fast lookups
 CREATE INDEX IF NOT EXISTS idx_account_equity_account 

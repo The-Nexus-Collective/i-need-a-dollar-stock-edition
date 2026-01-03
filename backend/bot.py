@@ -42,6 +42,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Install health tracking logging handler to capture all errors/warnings
+from core.health_tracker import install_health_logging
+install_health_logging()
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════

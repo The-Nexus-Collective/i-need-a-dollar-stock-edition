@@ -29,6 +29,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Install health tracking logging handler to capture all errors/warnings
+from core.health_tracker import install_health_logging, get_health_tracker
+install_health_logging()
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # APPLICATION LIFECYCLE
@@ -799,6 +803,73 @@ async def get_volatility_regime():
             "btc_atr_percent": 0,
             "error": str(e)
         }
+
+
+@app.get("/api/system/health", tags=["System"])
+async def get_system_health(db=Depends(get_db)):
+    """
+    Get comprehensive system health status including service connectivity
+    and recent logged errors.
+    
+    Returns:
+        - overall: "healthy", "degraded", or "unhealthy"
+        - services: Status of each service (database, redis, grok)
+        - error_count: Total errors since startup
+        - warning_count: Total warnings since startup
+        - recent_errors: List of recent error/warning log entries
+        - last_check: Timestamp of this health check
+    """
+    import time
+    from sqlalchemy import text
+    
+    tracker = get_health_tracker()
+    
+    # Check database connectivity
+    try:
+        start = time.time()
+        await db.execute(text("SELECT 1"))
+        latency = (time.time() - start) * 1000
+        tracker.update_service("database", "healthy", latency_ms=round(latency, 1))
+    except Exception as e:
+        tracker.update_service("database", "unhealthy", error=str(e))
+    
+    # Check Redis connectivity
+    try:
+        bus = get_event_bus()
+        start = time.time()
+        if bus._redis:
+            await bus._redis.ping()
+            latency = (time.time() - start) * 1000
+            tracker.update_service("redis", "healthy", latency_ms=round(latency, 1))
+        else:
+            tracker.update_service("redis", "unhealthy", error="Not connected")
+    except Exception as e:
+        tracker.update_service("redis", "unhealthy", error=str(e))
+    
+    # Check Grok API key presence
+    try:
+        grok_key = os.getenv("XAI_API_KEY", "")
+        if grok_key and len(grok_key) > 10:
+            tracker.update_service("grok", "healthy")
+        else:
+            tracker.update_service("grok", "unhealthy", error="XAI_API_KEY not configured")
+    except Exception as e:
+        tracker.update_service("grok", "unhealthy", error=str(e))
+    
+    # Check Binance WebSocket status (via price cache if available)
+    try:
+        from core.price_cache import get_price_cache
+        cache = get_price_cache()
+        if cache and cache.get_all_prices():
+            tracker.update_service("binance", "healthy")
+        else:
+            tracker.update_service("binance", "unknown", error="No price data available")
+    except Exception as e:
+        tracker.update_service("binance", "unknown", error=str(e))
+    
+    # Generate and return health report
+    report = tracker.get_health_report(error_limit=30)
+    return report.to_dict()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
