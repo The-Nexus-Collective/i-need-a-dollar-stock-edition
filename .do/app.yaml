@@ -194,6 +194,7 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════════════
   # DATABASE MIGRATIONS
   # Runs before services start on each deployment
+  # Tracks applied migrations in schema_migrations table
   # ═══════════════════════════════════════════════════════════════════════════
   - name: migrate
     github:
@@ -203,45 +204,7 @@ jobs:
     dockerfile_path: backend/Dockerfile
     instance_size_slug: basic-xxs
     kind: PRE_DEPLOY
-    run_command: |
-      python -c "
-      import asyncio
-      import os
-      from sqlalchemy import text
-      from sqlalchemy.ext.asyncio import create_async_engine
-
-      async def run_migrations():
-          db_url = os.getenv('DATABASE_URL', '').replace('postgresql://', 'postgresql+asyncpg://')
-          engine = create_async_engine(db_url, echo=True)
-          
-          migrations = [
-              'migrations/init.sql',
-              'migrations/002_add_filter_columns.sql',
-              'migrations/003_account_state.sql',
-              'migrations/004_leverage_and_paper_mode.sql',
-              'migrations/005_multi_asset.sql',
-              'migrations/006_velocity_metrics.sql',
-          ]
-          
-          async with engine.begin() as conn:
-              for migration in migrations:
-                  try:
-                      with open(migration, 'r') as f:
-                          sql = f.read()
-                      # Split by semicolons and execute each statement
-                      for stmt in sql.split(';'):
-                          stmt = stmt.strip()
-                          if stmt and not stmt.startswith('--'):
-                              await conn.execute(text(stmt))
-                      print(f'Applied: {migration}')
-                  except Exception as e:
-                      print(f'Migration {migration}: {e}')
-          
-          await engine.dispose()
-          print('Migrations complete!')
-
-      asyncio.run(run_migrations())
-      "
+    run_command: python migrations/run_migrations.py
     envs:
       - key: DATABASE_URL
         scope: RUN_TIME
