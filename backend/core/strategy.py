@@ -32,6 +32,9 @@ from .filters import (
     get_market_data_client,
     check_score_filter,
     check_volume_filter,
+    determine_volatility_regime,
+    get_current_regime_info,
+    get_dynamic_threshold,
 )
 from models import AsyncSessionLocal, Signal, Position, PortfolioSnapshot
 
@@ -48,6 +51,79 @@ RISK_PER_TRADE = float(os.getenv('RISK_PER_TRADE', '0.02'))  # 2%
 STOP_LOSS_ATR_MULT = float(os.getenv('STOP_LOSS_ATR_MULT', '1.5'))
 TAKE_PROFIT_ATR_MULT = float(os.getenv('TAKE_PROFIT_ATR_MULT', '4.0'))
 INITIAL_EQUITY = float(os.getenv('INITIAL_EQUITY', '10000'))
+
+# Leverage parameters (3-5x adaptive)
+MIN_LEVERAGE = float(os.getenv('MIN_LEVERAGE', '3.0'))
+MAX_LEVERAGE = float(os.getenv('MAX_LEVERAGE', '5.0'))
+
+
+def calculate_adaptive_leverage(
+    sentiment_score: float,
+    atr_percent: float,
+    regime: str = "normal"
+) -> float:
+    """
+    Calculate adaptive leverage based on conviction, volatility, and market regime.
+    
+    Leverage scales from MIN_LEVERAGE to MAX_LEVERAGE (default 3x-5x):
+    - High conviction (|score| close to 100) + low volatility = higher leverage
+    - Low conviction (|score| close to 65) + high volatility = lower leverage
+    - Stress regime = always use MIN_LEVERAGE
+    
+    Args:
+        sentiment_score: Sentiment score from -100 to +100
+        atr_percent: ATR as percentage of price (e.g., 0.5 = 0.5%)
+        regime: Market regime ('normal' or 'stress')
+    
+    Returns:
+        Calculated leverage between MIN_LEVERAGE and MAX_LEVERAGE
+    
+    Examples:
+        | Score | ATR % | Conviction | Vol Factor | Leverage |
+        |-------|-------|------------|------------|----------|
+        | 65    | 1.5%  | 0.0        | 0.0        | 3.0x     |
+        | 80    | 0.8%  | 0.43       | 0.70       | 3.9x     |
+        | 90    | 0.5%  | 0.71       | 1.00       | 4.6x     |
+        | 100   | 0.3%  | 1.0        | 1.00       | 5.0x     |
+    """
+    if regime == "stress":
+        return MIN_LEVERAGE
+    
+    # Conviction factor: 0.0 to 1.0 (|score| from 65 to 100)
+    conviction = min(1.0, max(0.0, (abs(sentiment_score) - 65) / 35))
+    
+    # Volatility factor: 0.0 to 1.0 (lower ATR% = higher factor)
+    # ATR% of 1.5% = high vol (factor 0), ATR% of 0.5% = low vol (factor 1)
+    vol_factor = max(0.0, min(1.0, (1.5 - atr_percent) / 1.0))
+    
+    # Combined factor (weighted average: 60% conviction, 40% volatility)
+    combined = (conviction * 0.6) + (vol_factor * 0.4)
+    
+    # Scale to leverage range
+    leverage = MIN_LEVERAGE + (combined * (MAX_LEVERAGE - MIN_LEVERAGE))
+    return round(leverage, 1)
+
+
+def detect_market_regime(atr_percent: float, recent_drawdown: float = 0.0) -> str:
+    """
+    Detect current market regime for leverage adjustment.
+    
+    Args:
+        atr_percent: Current ATR as percentage of price
+        recent_drawdown: Recent portfolio drawdown (0.0 to 1.0)
+    
+    Returns:
+        'stress' if high volatility or drawdown, otherwise 'normal'
+    """
+    # High volatility regime (ATR > 3% of price)
+    if atr_percent > 3.0:
+        return "stress"
+    
+    # High drawdown regime (> 10% drawdown)
+    if recent_drawdown > 0.10:
+        return "stress"
+    
+    return "normal"
 
 
 @dataclass
@@ -96,6 +172,15 @@ class TradingDecision:
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     atr_value: Optional[float] = None
+    
+    # Leverage (3-5x adaptive)
+    leverage: float = MIN_LEVERAGE
+    market_regime: str = "normal"
+    
+    # Dynamic score threshold (based on BTC volatility)
+    volatility_regime: str = "normal"  # 'high_vol', 'normal', 'low_vol'
+    score_threshold: float = 67.0
+    btc_atr_percent: float = 0.0
     
     # Portfolio state
     equity: float = INITIAL_EQUITY
@@ -181,6 +266,22 @@ class StrategyEngine:
         # Step 2: Fetch market data for all coins
         market_data = await self.market_data.get_all_market_data(TOP_COINS)
         
+        # Step 2.5: Determine volatility regime based on BTC ATR
+        btc_data = market_data.get('BTC')
+        if btc_data and btc_data.price > 0:
+            btc_atr_percent = (btc_data.atr_1h / btc_data.price) * 100
+        else:
+            btc_atr_percent = 1.0  # Default to normal if no data
+        
+        vol_regime, dynamic_threshold = determine_volatility_regime(btc_atr_percent)
+        regime_info = get_current_regime_info()
+        
+        logger.info(
+            f"Volatility Regime: {regime_info['regime_display']} | "
+            f"BTC ATR: {btc_atr_percent:.2f}% | "
+            f"Score Threshold: {dynamic_threshold}"
+        )
+        
         # Step 3: Combine and analyze
         analyses: Dict[str, CoinAnalysis] = {}
         
@@ -189,8 +290,8 @@ class StrategyEngine:
             md = market_data.get(coin)
             
             if sentiment_data and md:
-                # Check filters
-                score_pass = check_score_filter(sentiment_data.score, SCORE_THRESHOLD)
+                # Check filters using dynamic threshold
+                score_pass = check_score_filter(sentiment_data.score, dynamic_threshold)
                 volume_pass = check_volume_filter(md.volume_1h, md.volume_24h_avg, VOLUME_FILTER_RATIO)
                 
                 analyses[coin] = CoinAnalysis(
@@ -208,7 +309,7 @@ class StrategyEngine:
                 
                 logger.info(
                     f"{coin}: score={sentiment_data.score:.1f}, "
-                    f"score_pass={score_pass}, volume_pass={volume_pass}"
+                    f"score_pass={score_pass} (threshold={dynamic_threshold}), volume_pass={volume_pass}"
                 )
         
         # Step 4: Select best coin that passes all filters
@@ -221,7 +322,7 @@ class StrategyEngine:
             volume_fails = sum(1 for a in all_analyses if a.filter_score_pass and not a.filter_volume_pass)
             
             if score_fails == len(all_analyses):
-                filter_reason = f"score_filter: no coin has |Score| >= {SCORE_THRESHOLD}"
+                filter_reason = f"score_filter: no coin has |Score| >= {dynamic_threshold} ({vol_regime} regime)"
             elif volume_fails > 0:
                 filter_reason = f"volume_filter: {volume_fails} coins failed volume check"
             else:
@@ -234,6 +335,9 @@ class StrategyEngine:
                 batch_id=batch_id,
                 decision='filtered',
                 filter_reason=filter_reason,
+                volatility_regime=vol_regime,
+                score_threshold=dynamic_threshold,
+                btc_atr_percent=btc_atr_percent,
                 all_analyses=analyses,
                 grok_raw_response=sentiment_result.raw_response,
                 request_hash=sentiment_result.response_hash,
@@ -248,13 +352,25 @@ class StrategyEngine:
         
         logger.info(f"Selected {best.coin} with score {best.score:.1f}")
         
-        # Step 5: Calculate position sizing
+        # Step 5: Calculate position sizing with adaptive leverage
         equity = await self.get_current_equity()
         risk_amount = equity * RISK_PER_TRADE
         
-        # Position size = risk_amount / (stop_distance in USDT)
+        # Calculate ATR as percentage of price for leverage calculation
+        atr_percent = (best.atr_1h / best.price) * 100 if best.price > 0 else 1.0
+        
+        # Detect market regime and calculate adaptive leverage
+        market_regime = detect_market_regime(atr_percent)
+        leverage = calculate_adaptive_leverage(best.score, atr_percent, market_regime)
+        
+        logger.info(
+            f"Leverage calculation: score={best.score:.1f}, ATR%={atr_percent:.2f}, "
+            f"regime={market_regime}, leverage={leverage}x"
+        )
+        
+        # Position size = (risk_amount * leverage) / (stop_distance in USDT)
         stop_distance = best.atr_1h * STOP_LOSS_ATR_MULT
-        position_size = risk_amount / stop_distance
+        position_size = (risk_amount * leverage) / stop_distance
         
         # Determine direction
         side = 'long' if best.score > 0 else 'short'
@@ -279,6 +395,11 @@ class StrategyEngine:
             stop_loss=stop_loss,
             take_profit=take_profit,
             atr_value=best.atr_1h,
+            leverage=leverage,
+            market_regime=market_regime,
+            volatility_regime=vol_regime,
+            score_threshold=dynamic_threshold,
+            btc_atr_percent=btc_atr_percent,
             equity=equity,
             risk_amount=risk_amount,
             all_analyses=analyses,
@@ -290,7 +411,7 @@ class StrategyEngine:
         await self._log_decision(decision)
         
         logger.info(
-            f"Decision: {side.upper()} {best.coin} | "
+            f"Decision: {side.upper()} {best.coin} @ {leverage}x | "
             f"Size: {position_size:.4f} | Entry: ${best.price:.2f} | "
             f"SL: ${stop_loss:.2f} | TP: ${take_profit:.2f}"
         )

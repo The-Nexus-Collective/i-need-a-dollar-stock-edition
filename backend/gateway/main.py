@@ -646,13 +646,51 @@ async def get_system_status():
     for stream_key in ["signals", "risk", "orders", "positions"]:
         streams_info[stream_key] = await bus.get_stream_info(stream_key)
     
+    # Get volatility regime info
+    try:
+        from core.filters import get_current_regime_info
+        regime_info = get_current_regime_info()
+    except Exception:
+        regime_info = {
+            "regime": "unknown",
+            "regime_display": "Unknown",
+            "threshold": 67,
+            "btc_atr_percent": 0
+        }
+    
     return {
         "mode": os.getenv("MODE", "paper"),
         "status": "running",
         "timestamp": datetime.utcnow().isoformat(),
         "websocket_connections": sum(len(c) for c in manager.active_connections.values()),
-        "event_streams": streams_info
+        "event_streams": streams_info,
+        "volatility_regime": regime_info
     }
+
+
+@app.get("/api/system/regime", tags=["System"])
+async def get_volatility_regime():
+    """
+    Get current volatility regime and dynamic score threshold.
+    
+    Returns:
+        - regime: Current regime (high_vol, normal, low_vol)
+        - regime_display: Human-readable regime name
+        - threshold: Current score threshold
+        - btc_atr_percent: BTC ATR as percentage of price
+        - thresholds: All threshold values by regime
+    """
+    try:
+        from core.filters import get_current_regime_info
+        return get_current_regime_info()
+    except Exception as e:
+        return {
+            "regime": "unknown",
+            "regime_display": "Unknown",
+            "threshold": 67,
+            "btc_atr_percent": 0,
+            "error": str(e)
+        }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

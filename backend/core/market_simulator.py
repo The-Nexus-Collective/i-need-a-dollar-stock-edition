@@ -4,11 +4,13 @@ Market Simulator - Realistic paper trade execution
 Simulates order execution with:
 - Real order book data for slippage calculation
 - VIP 0 Binance Futures fees
-- Realistic fill mechanics
+- Gaussian noise for realistic variance
+- Funding rate simulation for perpetuals
 """
 
 import asyncio
 import logging
+import random
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -26,12 +28,43 @@ logger = logging.getLogger(__name__)
 MAKER_FEE = 0.0002   # 0.02%
 TAKER_FEE = 0.0005   # 0.05%
 
-# Funding rate (average, varies by market conditions)
-# Typical range: -0.01% to 0.03% every 8 hours
-FUNDING_RATE_ESTIMATE = 0.0001  # 0.01% per 8 hours
+# Funding rate simulation parameters (every 8 hours)
+FUNDING_RATE_MEAN = 0.0001    # 0.01% average
+FUNDING_RATE_STD = 0.0002     # ±0.02% std deviation
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SLIPPAGE SIMULATION - Gaussian distribution
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Slippage follows Gaussian distribution for realism
+SLIPPAGE_MEAN = 0.001     # 0.1% mean slippage
+SLIPPAGE_STD = 0.0005     # 0.05% std deviation
+SLIPPAGE_MIN = 0.0005     # 0.05% minimum (spread)
+SLIPPAGE_MAX = 0.002      # 0.2% maximum (caps extreme values)
 
 # Minimum spread to apply even with deep liquidity
 MIN_SPREAD_BPS = 1  # 0.01% minimum spread
+
+
+def gaussian_slippage() -> float:
+    """
+    Generate realistic slippage using Gaussian distribution.
+    
+    Returns slippage as a decimal (e.g., 0.001 = 0.1%)
+    Clamped to [SLIPPAGE_MIN, SLIPPAGE_MAX] to avoid extreme values.
+    """
+    slippage = random.gauss(SLIPPAGE_MEAN, SLIPPAGE_STD)
+    return max(SLIPPAGE_MIN, min(SLIPPAGE_MAX, slippage))
+
+
+def simulate_funding_rate() -> float:
+    """
+    Simulate funding rate for perpetual futures.
+    
+    Returns funding rate as a decimal (e.g., 0.0001 = 0.01%)
+    Can be negative (shorts pay longs) or positive (longs pay shorts).
+    """
+    return random.gauss(FUNDING_RATE_MEAN, FUNDING_RATE_STD)
 
 
 @dataclass
@@ -63,6 +96,11 @@ class Fill:
     timestamp: datetime
     is_paper: bool = True
     
+    # Enhanced paper mode tracking
+    simulated_slippage: float = 0.0   # Slippage rate used (for DB tracking)
+    funding_rate: float = 0.0          # Simulated funding rate
+    leverage: float = 1.0              # Leverage used for this trade
+    
     @property
     def net_cost(self) -> float:
         """Total cost to execute this order"""
@@ -78,12 +116,15 @@ class Fill:
             "fill_price": self.fill_price,
             "slippage_cost": self.slippage_cost,
             "slippage_bps": self.slippage_bps,
+            "simulated_slippage": self.simulated_slippage,
             "fee": self.fee,
             "fee_rate": self.fee_rate,
             "total_cost": self.total_cost,
             "book_depth_used": self.book_depth_used,
             "timestamp": self.timestamp.isoformat(),
-            "is_paper": self.is_paper
+            "is_paper": self.is_paper,
+            "funding_rate": self.funding_rate,
+            "leverage": self.leverage
         }
 
 
@@ -108,16 +149,21 @@ class MarketSimulator:
         coin: str,
         side: str,
         quantity: float,
-        is_reduce_only: bool = False
+        is_reduce_only: bool = False,
+        leverage: float = 1.0
     ) -> Fill:
         """
-        Execute a simulated market order.
+        Execute a simulated market order with realistic slippage.
+        
+        Uses Gaussian distribution for slippage to add realistic variance
+        to paper trading results.
         
         Args:
             coin: Trading pair base (e.g., 'BTC')
             side: 'buy' or 'sell'
             quantity: Order size in base currency
             is_reduce_only: True if closing position (affects fee)
+            leverage: Leverage used for this trade (for tracking)
         
         Returns:
             Fill object with complete execution details
@@ -135,14 +181,28 @@ class MarketSimulator:
             else:
                 raise ValueError(f"No price data available for {coin}")
         
-        # Calculate fill using order book
+        # Calculate fill using order book OR Gaussian simulation
         vwap, slippage_pct, levels_used = self._simulate_fill(coin, side, quantity)
         
+        # Track the simulated slippage rate for database
+        simulated_slippage_rate = 0.0
+        
         if vwap == 0:
-            # No order book data, use current price with estimated slippage
-            vwap = self._estimate_fill_price(current_price, side, quantity)
-            slippage_pct = MIN_SPREAD_BPS / 100
+            # No order book data - use Gaussian slippage simulation
+            simulated_slippage_rate = gaussian_slippage()
+            vwap = self._estimate_fill_price_gaussian(current_price, side, simulated_slippage_rate)
+            slippage_pct = simulated_slippage_rate * 100
             levels_used = 0
+            
+            logger.debug(
+                f"Using Gaussian slippage for {coin}: {simulated_slippage_rate*100:.4f}%"
+            )
+        else:
+            # Order book available - add small Gaussian noise for realism
+            noise = gaussian_slippage() * 0.3  # 30% of normal Gaussian slippage as noise
+            simulated_slippage_rate = slippage_pct / 100 + noise
+            vwap = vwap * (1 + noise if side == 'buy' else 1 - noise)
+            slippage_pct = simulated_slippage_rate * 100
         
         # Calculate costs
         notional = quantity * vwap
@@ -162,9 +222,12 @@ class MarketSimulator:
         
         total_cost = notional + fee
         
+        # Simulate funding rate for perpetuals
+        funding = simulate_funding_rate()
+        
         logger.info(
             f"PAPER FILL: {side.upper()} {quantity:.6f} {coin} @ ${vwap:,.2f} "
-            f"(slip: {slippage_pct:.4f}%, fee: ${fee:.2f})"
+            f"(slip: {slippage_pct:.4f}%, fee: ${fee:.2f}, leverage: {leverage}x)"
         )
         
         return Fill(
@@ -176,12 +239,15 @@ class MarketSimulator:
             fill_price=vwap,
             slippage_cost=slippage_cost,
             slippage_bps=slippage_pct * 100,
+            simulated_slippage=simulated_slippage_rate,
             fee=fee,
             fee_rate=fee_rate,
             total_cost=total_cost,
             book_depth_used=levels_used,
             timestamp=timestamp,
-            is_paper=True
+            is_paper=True,
+            funding_rate=funding,
+            leverage=leverage
         )
     
     def _simulate_fill(
@@ -258,6 +324,8 @@ class MarketSimulator:
         Uses conservative slippage assumptions:
         - Base spread: 0.02%
         - Size impact: 0.01% per $100k notional
+        
+        Note: For Gaussian slippage, use _estimate_fill_price_gaussian instead.
         """
         notional = quantity * mid_price
         
@@ -273,6 +341,28 @@ class MarketSimulator:
             return mid_price * (1 + total_slippage)
         else:
             return mid_price * (1 - total_slippage)
+    
+    def _estimate_fill_price_gaussian(
+        self,
+        mid_price: float,
+        side: str,
+        slippage_rate: float
+    ) -> float:
+        """
+        Estimate fill price using a pre-computed Gaussian slippage rate.
+        
+        Args:
+            mid_price: Current mid price
+            side: 'buy' or 'sell'
+            slippage_rate: Pre-computed slippage as decimal (e.g., 0.001 = 0.1%)
+        
+        Returns:
+            Estimated fill price with slippage applied
+        """
+        if side == 'buy':
+            return mid_price * (1 + slippage_rate)
+        else:
+            return mid_price * (1 - slippage_rate)
     
     async def estimate_slippage(
         self,

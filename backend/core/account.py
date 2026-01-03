@@ -43,10 +43,35 @@ class AccountPosition:
     take_profit: float = 0
     unrealized_pnl: float = 0
     position_id: str = ""
+    leverage: float = 1.0  # 3-5x adaptive leverage
     
     @property
     def notional_value(self) -> float:
         return self.quantity * self.current_price
+    
+    @property
+    def margin_required(self) -> float:
+        """Margin = notional / leverage (for perpetuals)"""
+        if self.leverage <= 0:
+            return self.notional_value
+        return self.notional_value / self.leverage
+    
+    @property
+    def liquidation_price(self) -> float:
+        """
+        Estimated liquidation price (80% margin loss).
+        For 5x leverage, liquidation occurs at ~16% adverse move.
+        """
+        if self.leverage <= 0:
+            return 0
+        
+        # Liquidation threshold: 80% of margin lost
+        liq_threshold = 0.8 / self.leverage
+        
+        if self.side == 'long':
+            return self.entry_price * (1 - liq_threshold)
+        else:
+            return self.entry_price * (1 + liq_threshold)
     
     def update_pnl(self, current_price: float):
         self.current_price = current_price
@@ -54,6 +79,96 @@ class AccountPosition:
             self.unrealized_pnl = (current_price - self.entry_price) * self.quantity
         else:
             self.unrealized_pnl = (self.entry_price - current_price) * self.quantity
+
+
+def check_simulated_liquidation(
+    position: AccountPosition,
+    current_price: float
+) -> tuple:
+    """
+    Check if a leveraged position would be liquidated at current price.
+    
+    Liquidation occurs when ~80% of margin is lost:
+    - At 5x leverage: ~16% adverse price move
+    - At 3x leverage: ~26.7% adverse price move
+    
+    Args:
+        position: The position to check
+        current_price: Current market price
+    
+    Returns:
+        Tuple of (would_liquidate: bool, price_change_pct: float, distance_to_liq: float)
+    """
+    if position.leverage <= 0:
+        return False, 0.0, float('inf')
+    
+    # Liquidation threshold as percentage of entry price
+    liq_threshold = 0.8 / position.leverage
+    
+    # Calculate actual price change
+    if position.side == 'long':
+        price_change = (position.entry_price - current_price) / position.entry_price
+    else:
+        price_change = (current_price - position.entry_price) / position.entry_price
+    
+    # Distance to liquidation (negative = past liquidation)
+    distance_to_liq = liq_threshold - price_change
+    
+    would_liquidate = price_change >= liq_threshold
+    
+    return would_liquidate, price_change, distance_to_liq
+
+
+def simulate_margin_call_check(
+    positions: Dict[str, AccountPosition],
+    prices: Dict[str, float]
+) -> Dict[str, dict]:
+    """
+    Run margin/liquidation check for all positions.
+    
+    Returns dict with status for each position:
+    {
+        'BTC': {
+            'would_liquidate': False,
+            'price_change_pct': 0.05,
+            'distance_to_liq_pct': 0.11,
+            'status': 'safe'  # 'safe', 'warning', 'danger', 'liquidated'
+        }
+    }
+    """
+    results = {}
+    
+    for coin, pos in positions.items():
+        current_price = prices.get(coin, pos.current_price)
+        would_liq, price_change, distance = check_simulated_liquidation(pos, current_price)
+        
+        # Determine status
+        if would_liq:
+            status = 'liquidated'
+        elif distance < 0.05:  # Within 5% of liquidation
+            status = 'danger'
+        elif distance < 0.10:  # Within 10% of liquidation
+            status = 'warning'
+        else:
+            status = 'safe'
+        
+        results[coin] = {
+            'would_liquidate': would_liq,
+            'price_change_pct': price_change * 100,
+            'distance_to_liq_pct': distance * 100,
+            'liquidation_price': pos.liquidation_price,
+            'leverage': pos.leverage,
+            'status': status
+        }
+        
+        if would_liq:
+            logger.warning(
+                f"SIMULATED LIQUIDATION: {coin} {pos.side.upper()} @ {pos.leverage}x "
+                f"would be liquidated at ${current_price:.2f} "
+                f"(entry: ${pos.entry_price:.2f}, change: {price_change*100:.1f}%)"
+            )
+    
+    return results
 
 
 @dataclass
@@ -95,10 +210,14 @@ class AccountState:
         return self.balance_usdt + self.unrealized_pnl
     
     @property
+    def margin_used(self) -> float:
+        """Total margin used by open positions (notional / leverage)"""
+        return sum(p.margin_required for p in self.positions.values())
+    
+    @property
     def available_balance(self) -> float:
-        # Cash minus margin used for positions
-        margin_used = sum(p.notional_value for p in self.positions.values())
-        return self.balance_usdt - margin_used
+        """Cash minus margin used for positions"""
+        return self.balance_usdt - self.margin_used
     
     @property
     def total_return_pct(self) -> float:

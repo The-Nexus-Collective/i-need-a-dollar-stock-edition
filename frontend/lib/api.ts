@@ -235,7 +235,27 @@ class ApiClient {
       timestamp: string
       websocket_connections: number
       event_streams: Record<string, any>
+      volatility_regime: {
+        regime: string
+        regime_display: string
+        threshold: number
+        btc_atr_percent: number
+      }
     }>('/api/system/status')
+  }
+
+  async getVolatilityRegime() {
+    return this.fetch<{
+      regime: string
+      regime_display: string
+      threshold: number
+      btc_atr_percent: number
+      thresholds: {
+        high_vol: number
+        normal: number
+        low_vol: number
+      }
+    }>('/api/system/regime')
   }
 
   // Trading Decisions

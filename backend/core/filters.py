@@ -15,6 +15,24 @@ logger = logging.getLogger(__name__)
 VOLUME_FILTER_RATIO = 0.80  # 1h volume must be >= 80% of 24h average
 ATR_PERIODS = 14  # ATR calculation periods
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# DYNAMIC SCORE THRESHOLD - Based on BTC volatility regime
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Volatility thresholds (BTC ATR as % of price)
+HIGH_VOL_ATR_THRESHOLD = 1.2  # > 1.2% = high volatility
+LOW_VOL_ATR_THRESHOLD = 0.8   # < 0.8% = low volatility / chop
+
+# Score thresholds by regime
+SCORE_THRESHOLD_HIGH_VOL = 70  # High vol: keep strict
+SCORE_THRESHOLD_NORMAL = 67    # Normal: slightly relaxed
+SCORE_THRESHOLD_LOW_VOL = 65   # Low vol/chop: more opportunities
+
+# Current regime state (shared across strategy)
+_current_regime: str = "normal"
+_current_threshold: float = SCORE_THRESHOLD_NORMAL
+_btc_atr_percent: float = 0.0
+
 
 @dataclass
 class MarketData:
@@ -226,18 +244,92 @@ class BinanceMarketData:
         await self.exchange.close()
 
 
-def check_score_filter(score: float, threshold: float = 65) -> bool:
+def determine_volatility_regime(btc_atr_percent: float) -> tuple:
+    """
+    Determine volatility regime based on BTC 1-hour ATR.
+    
+    Regime logic:
+    - BTC ATR > 1.2% of price → High Volatility → threshold 70
+    - BTC ATR < 0.8% of price → Low Vol/Chop → threshold 65  
+    - Else → Normal → threshold 67
+    
+    Args:
+        btc_atr_percent: BTC ATR as percentage of price (e.g., 1.0 = 1%)
+    
+    Returns:
+        Tuple of (regime: str, threshold: float)
+    """
+    global _current_regime, _current_threshold, _btc_atr_percent
+    
+    old_regime = _current_regime
+    old_threshold = _current_threshold
+    _btc_atr_percent = btc_atr_percent
+    
+    if btc_atr_percent > HIGH_VOL_ATR_THRESHOLD:
+        _current_regime = "high_vol"
+        _current_threshold = SCORE_THRESHOLD_HIGH_VOL
+    elif btc_atr_percent < LOW_VOL_ATR_THRESHOLD:
+        _current_regime = "low_vol"
+        _current_threshold = SCORE_THRESHOLD_LOW_VOL
+    else:
+        _current_regime = "normal"
+        _current_threshold = SCORE_THRESHOLD_NORMAL
+    
+    # Log if threshold changed
+    if old_threshold != _current_threshold:
+        logger.info(
+            f"THRESHOLD ADJUSTED: {old_regime}→{_current_regime} | "
+            f"BTC ATR={btc_atr_percent:.2f}% | "
+            f"Threshold: {old_threshold}→{_current_threshold}"
+        )
+    
+    return _current_regime, _current_threshold
+
+
+def get_current_regime_info() -> dict:
+    """
+    Get current volatility regime information for dashboard display.
+    
+    Returns:
+        Dict with regime, threshold, and BTC ATR info
+    """
+    return {
+        "regime": _current_regime,
+        "regime_display": {
+            "high_vol": "High Vol",
+            "normal": "Normal",
+            "low_vol": "Low Vol"
+        }.get(_current_regime, "Unknown"),
+        "threshold": _current_threshold,
+        "btc_atr_percent": round(_btc_atr_percent, 2),
+        "thresholds": {
+            "high_vol": SCORE_THRESHOLD_HIGH_VOL,
+            "normal": SCORE_THRESHOLD_NORMAL,
+            "low_vol": SCORE_THRESHOLD_LOW_VOL
+        }
+    }
+
+
+def check_score_filter(score: float, threshold: float = None) -> bool:
     """
     Check if absolute score meets the minimum threshold.
     
     Args:
         score: Combined score (sentiment * narrative/100)
-        threshold: Minimum absolute score to trade (default 65)
+        threshold: Minimum absolute score to trade. 
+                   If None, uses the current dynamic threshold.
     
     Returns:
         True if |score| >= threshold
     """
+    if threshold is None:
+        threshold = _current_threshold
     return abs(score) >= threshold
+
+
+def get_dynamic_threshold() -> float:
+    """Get the current dynamic score threshold."""
+    return _current_threshold
 
 
 def check_volume_filter(volume_1h: float, volume_24h_avg: float, ratio: float = VOLUME_FILTER_RATIO) -> bool:

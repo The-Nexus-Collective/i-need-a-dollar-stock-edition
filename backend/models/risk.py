@@ -162,7 +162,16 @@ class SystemConfig(Base):
 
 # Risk limits configuration keys
 class RiskLimits:
-    """Constants for risk configuration keys"""
+    """
+    Constants for risk configuration keys.
+    
+    Updated limits for leveraged perpetuals trading:
+    - Per-Asset: 15% (leverage-adjusted)
+    - Max Deployed: 70% (leaves buffer for margin)
+    - Altcoin Cap: 40% (non-BTC/ETH exposure)
+    - Daily Loss: 4% (circuit breaker trigger)
+    - Leverage: 3-5x adaptive
+    """
     POSITION_LIMIT_PER_ASSET = "risk.position_limit_per_asset"
     POSITION_LIMIT_ALTCOINS = "risk.position_limit_altcoins"
     MAX_DEPLOYED = "risk.max_deployed"
@@ -173,17 +182,23 @@ class RiskLimits:
     STOP_LOSS_ATR = "trading.stop_loss_atr"
     TAKE_PROFIT_ATR = "trading.take_profit_atr"
     RISK_PER_TRADE = "trading.risk_per_trade"
+    MAX_LEVERAGE = "risk.max_leverage"
+    MIN_LEVERAGE = "risk.min_leverage"
+    DAILY_LOSS_LIMIT = "risk.daily_loss_limit"
     
-    # Default values
+    # Default values (updated for leveraged perpetuals)
     DEFAULTS = {
-        POSITION_LIMIT_PER_ASSET: 0.10,
-        POSITION_LIMIT_ALTCOINS: 0.30,
-        MAX_DEPLOYED: 0.80,
-        DRAWDOWN_LEVEL_1: 0.05,
-        DRAWDOWN_LEVEL_2: 0.10,
-        DRAWDOWN_LEVEL_3: 0.15,
-        VAR_LIMIT: 0.03,
-        STOP_LOSS_ATR: 1.5,
-        TAKE_PROFIT_ATR: 4.0,
-        RISK_PER_TRADE: 0.02,
+        POSITION_LIMIT_PER_ASSET: 0.15,   # 15% max equity in one coin (was 10%)
+        POSITION_LIMIT_ALTCOINS: 0.40,    # 40% non-BTC/ETH exposure (was 30%)
+        MAX_DEPLOYED: 0.70,               # 70% total positions (was 80%)
+        DRAWDOWN_LEVEL_1: 0.04,           # 4% triggers warning (was 5%)
+        DRAWDOWN_LEVEL_2: 0.08,           # 8% reduces position size
+        DRAWDOWN_LEVEL_3: 0.12,           # 12% halts new trades (was 15%)
+        VAR_LIMIT: 0.03,                  # 3% daily VaR limit
+        STOP_LOSS_ATR: 1.5,               # Stop loss at 1.5x ATR
+        TAKE_PROFIT_ATR: 4.0,             # Take profit at 4x ATR
+        RISK_PER_TRADE: 0.02,             # 2% risk per trade
+        MAX_LEVERAGE: 5.0,                # Maximum adaptive leverage
+        MIN_LEVERAGE: 3.0,                # Minimum leverage floor
+        DAILY_LOSS_LIMIT: 0.04,           # 4% daily loss circuit breaker
     }

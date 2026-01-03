@@ -349,6 +349,86 @@ class TradingBot:
         hour, minute = map(int, FLATTEN_TIME_CET.split(':'))
         return now_cet.hour == hour and now_cet.minute >= minute
     
+    async def health_check_apis(self) -> dict:
+        """
+        Hourly health check with exponential backoff retry.
+        
+        Checks:
+        - Grok API (xAI)
+        - Binance WebSocket/API
+        - Database connection
+        
+        Returns dict with status for each API.
+        """
+        apis = {
+            'grok': self._ping_grok,
+            'binance': self._ping_binance,
+            'database': self._ping_database
+        }
+        results = {}
+        
+        for api_name, ping_func in apis.items():
+            for attempt in range(3):  # 3 retries with exponential backoff
+                try:
+                    await ping_func()
+                    results[api_name] = {
+                        'status': 'healthy',
+                        'attempts': attempt + 1,
+                        'timestamp': datetime.utcnow().isoformat()
+                    }
+                    break
+                except Exception as e:
+                    wait_time = 2 ** attempt  # 1, 2, 4 seconds
+                    logger.warning(
+                        f"Health check {api_name} failed (attempt {attempt + 1}/3): {e}. "
+                        f"Retrying in {wait_time}s..."
+                    )
+                    await asyncio.sleep(wait_time)
+                    
+                    if attempt == 2:  # Last attempt
+                        results[api_name] = {
+                            'status': 'unhealthy',
+                            'error': str(e),
+                            'attempts': 3,
+                            'timestamp': datetime.utcnow().isoformat()
+                        }
+                        logger.error(f"Health check FAILED for {api_name}: {e}")
+        
+        # Log summary
+        healthy = sum(1 for r in results.values() if r['status'] == 'healthy')
+        logger.info(f"Health check: {healthy}/{len(results)} APIs healthy")
+        
+        return results
+    
+    async def _ping_grok(self):
+        """Ping Grok/xAI API"""
+        from core.signal_engine import get_grok_client
+        client = get_grok_client()
+        # Just check if we can create the client and API key is set
+        if not client._api_key:
+            raise ValueError("XAI_API_KEY not configured")
+        logger.debug("Grok API: OK")
+    
+    async def _ping_binance(self):
+        """Ping Binance WebSocket connection"""
+        if not self.ws_manager or not self.ws_manager.connected:
+            raise ConnectionError("Binance WebSocket not connected")
+        
+        # Check if we're receiving prices
+        prices = self.ws_manager.get_all_prices()
+        if not prices:
+            raise ConnectionError("No price data from Binance")
+        
+        logger.debug(f"Binance API: OK ({len(prices)} prices)")
+    
+    async def _ping_database(self):
+        """Ping database connection"""
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(text("SELECT 1"))
+            if not result.scalar():
+                raise ConnectionError("Database query failed")
+        logger.debug("Database: OK")
+    
     async def run(self):
         """Main bot loop"""
         self.running = True
@@ -361,11 +441,15 @@ class TradingBot:
         # Initialize components
         await self.initialize()
         
+        # Run initial health check
+        await self.health_check_apis()
+        
         # Run initial trading cycle
         await self.run_trading_cycle()
         
         # Main loop
         last_stop_check = datetime.now()
+        last_health_check = datetime.now()
         last_hour = datetime.now().hour
         
         while self.running:
@@ -382,6 +466,15 @@ class TradingBot:
                 if (now - last_stop_check).total_seconds() >= 5:
                     await self.check_stops()
                     last_stop_check = now
+                
+                # Hourly health check
+                if (now - last_health_check).total_seconds() >= 3600:
+                    health = await self.health_check_apis()
+                    last_health_check = now
+                    
+                    # If critical APIs are down, log warning
+                    if health.get('binance', {}).get('status') != 'healthy':
+                        logger.warning("Binance API unhealthy - trading may be affected")
                 
                 # Run strategy at the top of each hour
                 if now.hour != last_hour and now.minute < 5:

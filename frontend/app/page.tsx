@@ -98,6 +98,12 @@ export default function Dashboard() {
     volume_filtered: 0,
     executed_count: 0,
   })
+  const [regimeInfo, setRegimeInfo] = useState({
+    regime: 'normal',
+    regime_display: 'Normal',
+    threshold: 67,
+    btc_atr_percent: 0,
+  })
 
   // WebSocket
   const { isConnected, lastMessage } = useWebSocket({
@@ -126,7 +132,7 @@ export default function Dashboard() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [portfolioData, historyData, positionsData, signalsData, tradesData, decisionsData, statsData] = await Promise.all([
+        const [portfolioData, historyData, positionsData, signalsData, tradesData, decisionsData, statsData, regimeData] = await Promise.all([
           api.getPortfolio().catch(() => null),
           api.getPortfolioHistory(500).catch(() => []),
           api.getPositions('open').catch(() => []),
@@ -134,6 +140,7 @@ export default function Dashboard() {
           api.getTrades(20).catch(() => []),
           api.getDecisions(24).catch(() => []),
           api.getDecisionStats().catch(() => null),
+          api.getVolatilityRegime().catch(() => null),
         ])
 
         if (portfolioData) {
@@ -196,6 +203,10 @@ export default function Dashboard() {
 
         if (statsData) {
           setDecisionStats(statsData)
+        }
+
+        if (regimeData) {
+          setRegimeInfo(regimeData)
         }
 
         setLastRefresh(new Date())
@@ -445,6 +456,33 @@ export default function Dashboard() {
                     {new Date().getMinutes() < 55 
                       ? `${55 - new Date().getMinutes()}m` 
                       : 'Soon'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Volatility Regime Indicator */}
+              <div className="mt-4 p-3 rounded-lg bg-surface-2 border border-white/5">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-text-muted">Volatility Regime</span>
+                  <span className={clsx(
+                    'text-xs font-semibold px-2 py-0.5 rounded-full',
+                    regimeInfo.regime === 'high_vol' && 'bg-accent-amber/20 text-accent-amber',
+                    regimeInfo.regime === 'normal' && 'bg-accent-cyan/20 text-accent-cyan',
+                    regimeInfo.regime === 'low_vol' && 'bg-accent-emerald/20 text-accent-emerald'
+                  )}>
+                    {regimeInfo.regime_display}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-text-muted">Score Threshold</span>
+                  <span className="text-sm font-mono text-text-primary font-semibold">
+                    {regimeInfo.threshold}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-text-muted">BTC ATR</span>
+                  <span className="text-xs font-mono text-text-secondary">
+                    {regimeInfo.btc_atr_percent}%
                   </span>
                 </div>
               </div>
