@@ -199,7 +199,7 @@ export default function RiskPage() {
         api.getRiskEvents(undefined, 100).catch(() => []),
         api.getPortfolio().catch(() => null),
       ])
-      setRiskEvents(events)
+      setRiskEvents(events as RiskEvent[])
       if (portfolio) {
         setPortfolioData({
           var_95: portfolio.var_95,

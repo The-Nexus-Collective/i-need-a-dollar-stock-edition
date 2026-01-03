@@ -171,7 +171,7 @@ export default function HistoryPage() {
   async function fetchTrades() {
     try {
       const data = await api.getTrades(500)
-      setTrades(data)
+      setTrades(data as Trade[])
     } catch (error) {
       console.error('Failed to fetch trades:', error)
     } finally {
