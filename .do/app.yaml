@@ -16,6 +16,7 @@ name: i-need-a-dollar
 region: fra  # Frankfurt - change to your preferred region (nyc, sfo, ams, sgp, etc.)
 
 # ─── GLOBAL ENVIRONMENT VARIABLES ──────────────────────────────────────────────
+# AGGRESSIVE MODE CONFIGURATION
 envs:
   - key: MODE
     value: "paper"
@@ -29,16 +30,41 @@ envs:
   - key: REDIS_URL
     scope: RUN_TIME
     type: SECRET
+  # Aggressive strategy parameters
+  - key: CYCLE_MINUTES
+    value: "15"
   - key: SCORE_THRESHOLD
-    value: "65"
+    value: "50"
   - key: VOLUME_FILTER_RATIO
-    value: "0.80"
+    value: "0.70"
   - key: RISK_PER_TRADE
     value: "0.02"
+  - key: RISK_PER_REBALANCE
+    value: "0.015"
+  - key: REBALANCE_THRESHOLD
+    value: "0.15"
+  - key: MIN_COINS_PER_CYCLE
+    value: "5"
+  - key: MAX_COINS_PER_CYCLE
+    value: "8"
+  - key: TARGET_DEPLOYMENT
+    value: "0.80"
+  - key: MIN_LEVERAGE
+    value: "4.0"
+  - key: MAX_LEVERAGE
+    value: "7.0"
+  - key: MAX_DEPLOYED
+    value: "0.90"
+  - key: PER_ASSET_LIMIT
+    value: "0.20"
+  - key: DAILY_LOSS_LIMIT
+    value: "0.06"
   - key: INITIAL_EQUITY
-    value: "10000"
+    value: "100000"
   - key: FLATTEN_TIME_CET
     value: "23:55"
+  - key: FORCE_TRADE
+    value: "false"
 
 # ─── SERVICES ──────────────────────────────────────────────────────────────────
 
@@ -161,4 +187,63 @@ databases:
     engine: PG
     cluster_name: i-need-a-dollar
     production: true
+
+# ─── JOBS (Pre-deploy tasks) ──────────────────────────────────────────────────
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # DATABASE MIGRATIONS
+  # Runs before services start on each deployment
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: migrate
+    github:
+      repo: The-Nexus-Collective/I-Need-A-Dollar
+      branch: main
+    source_dir: backend
+    dockerfile_path: backend/Dockerfile
+    instance_size_slug: basic-xxs
+    kind: PRE_DEPLOY
+    run_command: |
+      python -c "
+      import asyncio
+      import os
+      from sqlalchemy import text
+      from sqlalchemy.ext.asyncio import create_async_engine
+
+      async def run_migrations():
+          db_url = os.getenv('DATABASE_URL', '').replace('postgresql://', 'postgresql+asyncpg://')
+          engine = create_async_engine(db_url, echo=True)
+          
+          migrations = [
+              'migrations/init.sql',
+              'migrations/002_add_filter_columns.sql',
+              'migrations/003_account_state.sql',
+              'migrations/004_leverage_and_paper_mode.sql',
+              'migrations/005_multi_asset.sql',
+              'migrations/006_velocity_metrics.sql',
+          ]
+          
+          async with engine.begin() as conn:
+              for migration in migrations:
+                  try:
+                      with open(migration, 'r') as f:
+                          sql = f.read()
+                      # Split by semicolons and execute each statement
+                      for stmt in sql.split(';'):
+                          stmt = stmt.strip()
+                          if stmt and not stmt.startswith('--'):
+                              await conn.execute(text(stmt))
+                      print(f'Applied: {migration}')
+                  except Exception as e:
+                      print(f'Migration {migration}: {e}')
+          
+          await engine.dispose()
+          print('Migrations complete!')
+
+      asyncio.run(run_migrations())
+      "
+    envs:
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        value: ${db.DATABASE_URL}
 
