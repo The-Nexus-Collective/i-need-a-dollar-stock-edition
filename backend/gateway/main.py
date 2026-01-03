@@ -633,6 +633,114 @@ async def get_decision_stats(db=Depends(get_db)):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# AGGRESSIVE MODE: VELOCITY METRICS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/velocity", tags=["Velocity"])
+async def get_velocity_metrics(db=Depends(get_db)):
+    """
+    Get trading velocity and deployment metrics for aggressive mode.
+    
+    Returns:
+        - trades_last_hour: Trades in last hour
+        - trades_today: Trades today
+        - trades_24h: Trades in last 24 hours
+        - rebalances_today: Rebalance trades today
+        - avg_trades_per_hour: Average trades per hour (24h)
+        - velocity_status: ON_TARGET (100+), MODERATE (50+), BELOW_TARGET
+        - deployment_percent: Current portfolio deployment
+        - positions_count: Open positions count
+        - target_deployment: Target deployment (0.80)
+        - deployment_status: ON_TARGET, MODERATE, LOW
+        - force_trade_enabled: Whether FORCE_TRADE env is set
+    """
+    try:
+        # Get trade velocity from database
+        velocity_query = text("""
+            SELECT 
+                COUNT(*) FILTER (WHERE executed_at > NOW() - INTERVAL '1 hour') as trades_last_hour,
+                COUNT(*) FILTER (WHERE executed_at > CURRENT_DATE) as trades_today,
+                COUNT(*) FILTER (WHERE executed_at > NOW() - INTERVAL '24 hours') as trades_24h,
+                COUNT(*) FILTER (WHERE executed_at > CURRENT_DATE AND is_rebalance = TRUE) as rebalances_today,
+                ROUND(COUNT(*) FILTER (WHERE executed_at > NOW() - INTERVAL '24 hours')::NUMERIC / 24, 1) as avg_trades_per_hour
+            FROM trades
+            WHERE is_paper = TRUE
+        """)
+        result = await db.execute(velocity_query)
+        row = result.fetchone()
+        
+        trades_today = row.trades_today if row else 0
+        trades_last_hour = row.trades_last_hour if row else 0
+        trades_24h = row.trades_24h if row else 0
+        rebalances_today = row.rebalances_today if row else 0
+        avg_trades_per_hour = float(row.avg_trades_per_hour) if row and row.avg_trades_per_hour else 0
+        
+        # Velocity status
+        if trades_today >= 100:
+            velocity_status = 'ON_TARGET'
+        elif trades_today >= 50:
+            velocity_status = 'MODERATE'
+        else:
+            velocity_status = 'BELOW_TARGET'
+        
+        # Get deployment from latest snapshot
+        snapshot_query = text("""
+            SELECT 
+                COALESCE(deployment_percent, 0) as deployment_percent,
+                COALESCE(positions_count, 0) as positions_count
+            FROM portfolio_snapshots
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """)
+        snap_result = await db.execute(snapshot_query)
+        snap_row = snap_result.fetchone()
+        
+        deployment_percent = float(snap_row.deployment_percent) if snap_row and snap_row.deployment_percent else 0
+        positions_count = snap_row.positions_count if snap_row else 0
+        
+        # Deployment status
+        if deployment_percent >= 0.80:
+            deployment_status = 'ON_TARGET'
+        elif deployment_percent >= 0.60:
+            deployment_status = 'MODERATE'
+        else:
+            deployment_status = 'LOW'
+        
+        # Check FORCE_TRADE env
+        force_trade_enabled = os.getenv('FORCE_TRADE', 'false').lower() == 'true'
+        
+        return {
+            'trades_last_hour': trades_last_hour,
+            'trades_today': trades_today,
+            'trades_24h': trades_24h,
+            'rebalances_today': rebalances_today,
+            'avg_trades_per_hour': avg_trades_per_hour,
+            'velocity_status': velocity_status,
+            'deployment_percent': deployment_percent,
+            'positions_count': positions_count,
+            'target_deployment': 0.80,
+            'deployment_status': deployment_status,
+            'force_trade_enabled': force_trade_enabled,
+        }
+        
+    except Exception as e:
+        logger.warning(f"Failed to get velocity metrics: {e}")
+        return {
+            'trades_last_hour': 0,
+            'trades_today': 0,
+            'trades_24h': 0,
+            'rebalances_today': 0,
+            'avg_trades_per_hour': 0,
+            'velocity_status': 'BELOW_TARGET',
+            'deployment_percent': 0,
+            'positions_count': 0,
+            'target_deployment': 0.80,
+            'deployment_status': 'LOW',
+            'force_trade_enabled': False,
+        }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # SYSTEM ENDPOINTS
 # ═══════════════════════════════════════════════════════════════════════════════
 

@@ -45,6 +45,11 @@ class Position(Base, TimestampMixin):
     stop_loss: Mapped[Optional[Decimal]] = mapped_column(Numeric(20, 8), nullable=True)
     take_profit: Mapped[Optional[Decimal]] = mapped_column(Numeric(20, 8), nullable=True)
     
+    # Leverage (4-7x aggressive mode)
+    leverage: Mapped[Decimal] = mapped_column(Numeric(4, 1), default=1.0, nullable=False)
+    liquidation_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(20, 8), nullable=True)
+    margin_required: Mapped[Optional[Decimal]] = mapped_column(Numeric(20, 8), nullable=True)
+    
     # Status tracking
     status: Mapped[str] = mapped_column(
         String(20),
@@ -114,6 +119,8 @@ class Position(Base, TimestampMixin):
             "realized_pnl": float(self.realized_pnl) if self.realized_pnl else None,
             "stop_loss": float(self.stop_loss) if self.stop_loss else None,
             "take_profit": float(self.take_profit) if self.take_profit else None,
+            "leverage": float(self.leverage) if self.leverage else 1.0,
+            "liquidation_price": float(self.liquidation_price) if self.liquidation_price else None,
             "status": self.status,
             "opened_at": self.opened_at.isoformat() if self.opened_at else None,
             "closed_at": self.closed_at.isoformat() if self.closed_at else None,

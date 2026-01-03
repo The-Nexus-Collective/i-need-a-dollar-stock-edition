@@ -293,6 +293,26 @@ class ApiClient {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // AGGRESSIVE MODE: VELOCITY METRICS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async getVelocityMetrics() {
+    return this.fetch<{
+      trades_last_hour: number
+      trades_today: number
+      trades_24h: number
+      rebalances_today: number
+      avg_trades_per_hour: number
+      velocity_status: 'ON_TARGET' | 'MODERATE' | 'BELOW_TARGET'
+      deployment_percent: number
+      positions_count: number
+      target_deployment: number
+      deployment_status: 'ON_TARGET' | 'MODERATE' | 'LOW'
+      force_trade_enabled: boolean
+    }>('/api/velocity')
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // STOCK TRADING ENDPOINTS
   // ═══════════════════════════════════════════════════════════════════════════
 

@@ -104,6 +104,21 @@ export default function Dashboard() {
     threshold: 67,
     btc_atr_percent: 0,
   })
+  
+  // AGGRESSIVE MODE: Velocity and deployment metrics
+  const [velocityMetrics, setVelocityMetrics] = useState({
+    trades_last_hour: 0,
+    trades_today: 0,
+    trades_24h: 0,
+    rebalances_today: 0,
+    avg_trades_per_hour: 0,
+    velocity_status: 'BELOW_TARGET',
+    deployment_percent: 0,
+    positions_count: 0,
+    target_deployment: 0.80,
+    deployment_status: 'LOW',
+    force_trade_enabled: false,
+  })
 
   // WebSocket
   const { isConnected, lastMessage } = useWebSocket({
@@ -132,7 +147,7 @@ export default function Dashboard() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const [portfolioData, historyData, positionsData, signalsData, tradesData, decisionsData, statsData, regimeData] = await Promise.all([
+        const [portfolioData, historyData, positionsData, signalsData, tradesData, decisionsData, statsData, regimeData, velocityData] = await Promise.all([
           api.getPortfolio().catch(() => null),
           api.getPortfolioHistory(500).catch(() => []),
           api.getPositions('open').catch(() => []),
@@ -141,6 +156,7 @@ export default function Dashboard() {
           api.getDecisions(24).catch(() => []),
           api.getDecisionStats().catch(() => null),
           api.getVolatilityRegime().catch(() => null),
+          api.getVelocityMetrics().catch(() => null),
         ])
 
         if (portfolioData) {
@@ -207,6 +223,10 @@ export default function Dashboard() {
 
         if (regimeData) {
           setRegimeInfo(regimeData)
+        }
+
+        if (velocityData) {
+          setVelocityMetrics(velocityData)
         }
 
         setLastRefresh(new Date())
@@ -295,13 +315,21 @@ export default function Dashboard() {
             <motion.h1 
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="text-2xl font-semibold text-text-primary tracking-tight"
+              className="text-2xl font-semibold text-text-primary tracking-tight flex items-center gap-3"
             >
               Trading Dashboard
+              <span className="px-2 py-0.5 text-xs font-bold bg-accent-amber/20 text-accent-amber rounded border border-accent-amber/40">
+                AGGRESSIVE
+              </span>
+              {velocityMetrics.force_trade_enabled && (
+                <span className="px-2 py-0.5 text-xs font-bold bg-purple-500/20 text-purple-400 rounded border border-purple-500/40 animate-pulse">
+                  FORCE_TRADE
+                </span>
+              )}
             </motion.h1>
             <p className="text-xs text-text-muted mt-1 flex items-center gap-2">
               <Clock className="w-3 h-3" />
-              Last updated: {lastRefresh.toLocaleTimeString()}
+              Last updated: {lastRefresh.toLocaleTimeString()} • 15min cycles
             </p>
           </div>
 
@@ -359,6 +387,118 @@ export default function Dashboard() {
               : 'No trades yet'}
             trend={accountData.winningTrades > accountData.totalTrades / 2 ? 'up' : 'down'}
           />
+        </div>
+
+        {/* AGGRESSIVE MODE: Velocity & Deployment Metrics */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="glass-card p-4"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-label">Trades/Hour</span>
+              <Zap className="w-4 h-4 text-accent-amber" />
+            </div>
+            <div className="text-xl font-mono font-semibold text-text-primary">
+              {velocityMetrics.trades_last_hour}
+            </div>
+            <div className="text-xs text-text-muted">
+              Avg: {velocityMetrics.avg_trades_per_hour}/hr
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="glass-card p-4"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-label">Trades Today</span>
+              <Activity className="w-4 h-4 text-accent-cyan" />
+            </div>
+            <div className="text-xl font-mono font-semibold text-text-primary">
+              {velocityMetrics.trades_today}
+            </div>
+            <div className={clsx(
+              'text-xs font-medium',
+              velocityMetrics.velocity_status === 'ON_TARGET' && 'text-accent-emerald',
+              velocityMetrics.velocity_status === 'MODERATE' && 'text-accent-amber',
+              velocityMetrics.velocity_status === 'BELOW_TARGET' && 'text-accent-red'
+            )}>
+              {velocityMetrics.velocity_status === 'ON_TARGET' ? '✓ On target (100+)' :
+               velocityMetrics.velocity_status === 'MODERATE' ? '⚡ Moderate' : '⚠ Below target'}
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="glass-card p-4"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-label">Deployment</span>
+              <Activity className="w-4 h-4 text-accent-emerald" />
+            </div>
+            <div className="text-xl font-mono font-semibold text-text-primary">
+              {(velocityMetrics.deployment_percent * 100).toFixed(1)}%
+            </div>
+            <div className="mt-1 h-1.5 bg-void rounded-full overflow-hidden">
+              <div 
+                className={clsx(
+                  'h-full rounded-full transition-all',
+                  velocityMetrics.deployment_percent >= 0.80 ? 'bg-accent-emerald' :
+                  velocityMetrics.deployment_percent >= 0.60 ? 'bg-accent-amber' : 'bg-accent-red'
+                )}
+                style={{ width: `${Math.min(velocityMetrics.deployment_percent * 100, 100)}%` }}
+              />
+            </div>
+            <div className="text-xs text-text-muted mt-1">
+              Target: {(velocityMetrics.target_deployment * 100).toFixed(0)}%
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="glass-card p-4"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-label">Rebalances</span>
+              <RefreshCw className="w-4 h-4 text-purple-400" />
+            </div>
+            <div className="text-xl font-mono font-semibold text-text-primary">
+              {velocityMetrics.rebalances_today}
+            </div>
+            <div className="text-xs text-text-muted">
+              15% score shift trigger
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="glass-card p-4"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-label">Score Threshold</span>
+            </div>
+            <div className="text-xl font-mono font-semibold text-text-primary">
+              {regimeInfo.threshold}
+            </div>
+            <div className={clsx(
+              'text-xs font-medium px-2 py-0.5 rounded-full w-fit',
+              regimeInfo.regime === 'high_vol' && 'bg-accent-amber/10 text-accent-amber',
+              regimeInfo.regime === 'normal' && 'bg-accent-cyan/10 text-accent-cyan',
+              regimeInfo.regime === 'low_vol' && 'bg-accent-emerald/10 text-accent-emerald'
+            )}>
+              {regimeInfo.regime_display}
+            </div>
+          </motion.div>
         </div>
 
         {/* Main Grid */}

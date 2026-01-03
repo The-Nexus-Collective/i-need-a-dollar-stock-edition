@@ -11,22 +11,33 @@ import ccxt.async_support as ccxt
 
 logger = logging.getLogger(__name__)
 
-# Configuration
-VOLUME_FILTER_RATIO = 0.80  # 1h volume must be >= 80% of 24h average
+# ═══════════════════════════════════════════════════════════════════════════════
+# AGGRESSIVE CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Relaxed filter thresholds
+VOLUME_FILTER_RATIO = 0.70  # Was 0.80 - more permissive
 ATR_PERIODS = 14  # ATR calculation periods
 
+# Funding rate filter (for perpetuals)
+FUNDING_RATE_MAX = 0.0003  # 0.03% max funding rate
+
+# On-chain and technical filters
+ON_CHAIN_MIN = 0.05  # 5% minimum on-chain activity
+TECHNICAL_BUFFER = 0.10  # 10% technical buffer
+
 # ═══════════════════════════════════════════════════════════════════════════════
-# DYNAMIC SCORE THRESHOLD - Based on BTC volatility regime
+# DYNAMIC SCORE THRESHOLD - AGGRESSIVE MODE
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Volatility thresholds (BTC ATR as % of price)
 HIGH_VOL_ATR_THRESHOLD = 1.2  # > 1.2% = high volatility
 LOW_VOL_ATR_THRESHOLD = 0.8   # < 0.8% = low volatility / chop
 
-# Score thresholds by regime
-SCORE_THRESHOLD_HIGH_VOL = 70  # High vol: keep strict
-SCORE_THRESHOLD_NORMAL = 67    # Normal: slightly relaxed
-SCORE_THRESHOLD_LOW_VOL = 65   # Low vol/chop: more opportunities
+# AGGRESSIVE: Lowered score thresholds (was 70/67/65)
+SCORE_THRESHOLD_HIGH_VOL = 55  # High vol: still trade
+SCORE_THRESHOLD_NORMAL = 50    # Normal: aggressive
+SCORE_THRESHOLD_LOW_VOL = 45   # Low vol: very permissive (-5 dynamic)
 
 # Current regime state (shared across strategy)
 _current_regime: str = "normal"

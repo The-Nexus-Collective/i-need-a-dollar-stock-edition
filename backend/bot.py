@@ -29,7 +29,7 @@ from core.price_cache import init_caches, get_price_cache, get_book_cache
 from core.account import TradingAccount, init_trading_account, AccountPosition
 from core.market_simulator import MarketSimulator, get_market_simulator, Fill
 from core.equity_calculator import EquityCalculator, init_equity_calculator
-from core.strategy import StrategyEngine, run_trading_cycle, TradingDecision
+from core.strategy import StrategyEngine, run_trading_cycle, TradingDecision, CoinTrade
 from core.signal_engine import TOP_COINS
 
 from models import AsyncSessionLocal, Position, Trade
@@ -50,17 +50,23 @@ MODE = os.getenv('MODE', 'paper').lower()
 FLATTEN_TIME_CET = os.getenv('FLATTEN_TIME_CET', '23:55')
 CET = pytz.timezone('CET')
 
+# AGGRESSIVE MODE - 15 minute cycles (was hourly)
+CYCLE_MINUTES = int(os.getenv('CYCLE_MINUTES', '15'))
+FORCE_TRADE = os.getenv('FORCE_TRADE', 'false').lower() == 'true'
+
 
 class TradingBot:
     """
-    Main trading bot with real-time market data.
+    AGGRESSIVE Trading Bot - High-Frequency Paper Testing
     
     Features:
     - Live price updates via WebSocket
     - Realistic paper trading with order book slippage
     - Persistent account state
     - 23:55 CET daily flatten
-    - Hourly strategy cycles
+    - 15-minute strategy cycles (was hourly)
+    - FORCE_TRADE mode for 100+ trades/day
+    - 5-8 coins per cycle, 80-90% deployment
     """
     
     def __init__(self):
@@ -104,40 +110,63 @@ class TradingBot:
         logger.info("All components initialized")
     
     async def run_trading_cycle(self):
-        """Execute one trading cycle"""
+        """
+        Execute one trading cycle.
+        
+        AGGRESSIVE MODE: Handles 5-8 coin trades per cycle
+        """
         logger.info("=" * 60)
-        logger.info("Starting trading cycle")
+        logger.info(f"AGGRESSIVE Trading Cycle (FORCE_TRADE={FORCE_TRADE})")
         logger.info("=" * 60)
         
         try:
-            # Run strategy to get decision
+            # Run strategy to get decision with multiple trades
             decision = await run_trading_cycle()
             
-            # Get current position
-            current_position = self.account.get_position(decision.selected_coin) if decision.selected_coin else None
-            
-            if decision.decision in ['long', 'short']:
-                # Close existing position if different
+            if decision.decision in ['trade', 'force_trade']:
+                # AGGRESSIVE: Handle multiple coin trades (5-8)
+                logger.info(f"Processing {len(decision.trades)} trades, {decision.rebalance_count} rebalances")
+                
+                # Get coins we're trading this cycle
+                trading_coins = {t.coin for t in decision.trades}
+                
+                # Close positions not in new trading set
                 for coin in list(self.account.state.positions.keys()):
-                    if coin != decision.selected_coin:
-                        await self.close_position(coin, 'new_signal')
+                    if coin not in trading_coins:
+                        await self.close_position(coin, 'not_in_top_selection')
                 
-                # Check if we already have the right position
-                if current_position and current_position.side == decision.side:
-                    logger.info(f"Already {decision.side} {decision.selected_coin}, holding")
-                    return
+                # Process each trade
+                for trade in decision.trades:
+                    current_pos = self.account.get_position(trade.coin)
+                    
+                    # Skip if already holding same direction
+                    if current_pos and current_pos.side == trade.side and not trade.is_rebalance:
+                        logger.info(f"Already {trade.side} {trade.coin}, holding")
+                        continue
+                    
+                    # Close if reversing
+                    if current_pos and current_pos.side != trade.side:
+                        await self.close_position(trade.coin, 'reverse_signal')
+                    
+                    # Close if rebalancing (adjust size)
+                    if current_pos and trade.is_rebalance:
+                        await self.close_position(trade.coin, 'rebalance')
+                    
+                    # Open new/rebalanced position
+                    await self.open_position_from_trade(trade)
                 
-                # Close opposite position
-                if current_position and current_position.side != decision.side:
-                    await self.close_position(decision.selected_coin, 'reverse_signal')
-                
-                # Open new position
-                await self.open_position(decision)
+                logger.info(
+                    f"Cycle complete: {decision.trades_this_cycle} trades | "
+                    f"Deployment: {decision.deployment_percent*100:.1f}%"
+                )
             
             elif decision.decision in ['filtered', 'flat']:
-                # Close all positions
-                for coin in list(self.account.state.positions.keys()):
-                    await self.close_position(coin, decision.filter_reason or 'flat')
+                # Close all positions only if no candidates at all
+                if not decision.all_analyses:
+                    for coin in list(self.account.state.positions.keys()):
+                        await self.close_position(coin, decision.filter_reason or 'flat')
+                else:
+                    logger.info(f"Filtered: {decision.filter_reason} - keeping positions")
             
             # Save account state
             await self.account.save_state()
@@ -214,6 +243,83 @@ class TradingBot:
             current_price=fill.fill_price,
             stop_loss=decision.stop_loss or 0,
             take_profit=decision.take_profit or 0
+        ))
+        
+        # Deduct cost from balance
+        self.account.state.balance_usdt -= fill.fee
+        self.account.state.total_fees_paid += fill.fee
+        self.account.state.total_slippage_cost += fill.slippage_cost
+    
+    async def open_position_from_trade(self, trade: CoinTrade):
+        """Open a position from a CoinTrade object (multi-coin support)"""
+        if not trade.coin or not trade.position_size:
+            return
+        
+        # Execute via market simulator
+        fill = await self.simulator.execute_market_order(
+            coin=trade.coin,
+            side='buy' if trade.side == 'long' else 'sell',
+            quantity=trade.position_size
+        )
+        
+        trade_type = "REBAL" if trade.is_rebalance else "OPEN"
+        logger.info(
+            f"{trade_type}: {trade.side.upper()} {trade.position_size:.4f} {trade.coin} "
+            f"@ ${fill.fill_price:,.2f} (lev: {trade.leverage}x, slip: {fill.slippage_bps:.2f}bps)"
+        )
+        
+        # Create position in database
+        async with AsyncSessionLocal() as session:
+            position = Position(
+                coin=trade.coin,
+                side=trade.side,
+                quantity=Decimal(str(trade.position_size)),
+                entry_price=Decimal(str(fill.fill_price)),
+                current_price=Decimal(str(fill.fill_price)),
+                stop_loss=Decimal(str(trade.stop_loss)) if trade.stop_loss else None,
+                take_profit=Decimal(str(trade.take_profit)) if trade.take_profit else None,
+                leverage=Decimal(str(trade.leverage)),
+                status='open'
+            )
+            session.add(position)
+            await session.commit()
+            await session.refresh(position)
+            
+            # Create trade record
+            db_trade = Trade(
+                position_id=position.id,
+                order_id=fill.order_id,
+                exchange_order_id=fill.order_id,
+                coin=trade.coin,
+                side='buy' if trade.side == 'long' else 'sell',
+                order_type='market',
+                quantity=Decimal(str(trade.position_size)),
+                price=Decimal(str(fill.fill_price)),
+                fee=Decimal(str(fill.fee)),
+                fee_currency='USDT',
+                slippage_cost=Decimal(str(fill.slippage_cost)),
+                fee_rate=Decimal(str(fill.fee_rate)),
+                fill_vwap=Decimal(str(fill.fill_price)),
+                book_depth_used=fill.book_depth_used,
+                total_cost=Decimal(str(fill.total_cost)),
+                status='filled',
+                is_paper=True,
+                executed_at=fill.timestamp
+            )
+            session.add(db_trade)
+            await session.commit()
+        
+        # Update account
+        self.account.add_position(AccountPosition(
+            position_id=str(position.id),
+            coin=trade.coin,
+            side=trade.side,
+            quantity=trade.position_size,
+            entry_price=fill.fill_price,
+            current_price=fill.fill_price,
+            stop_loss=trade.stop_loss or 0,
+            take_profit=trade.take_profit or 0,
+            leverage=trade.leverage
         ))
         
         # Deduct cost from balance
@@ -430,11 +536,13 @@ class TradingBot:
         logger.debug("Database: OK")
     
     async def run(self):
-        """Main bot loop"""
+        """Main bot loop - AGGRESSIVE 15-minute cycles"""
         self.running = True
         
         logger.info("=" * 60)
-        logger.info(f"Trading Bot starting in {MODE.upper()} mode")
+        logger.info(f"AGGRESSIVE Trading Bot starting in {MODE.upper()} mode")
+        logger.info(f"Cycle interval: {CYCLE_MINUTES} minutes")
+        logger.info(f"FORCE_TRADE: {FORCE_TRADE}")
         logger.info(f"Flatten time: {FLATTEN_TIME_CET} CET")
         logger.info("=" * 60)
         
@@ -447,10 +555,11 @@ class TradingBot:
         # Run initial trading cycle
         await self.run_trading_cycle()
         
-        # Main loop
+        # Track cycle timing
         last_stop_check = datetime.now()
         last_health_check = datetime.now()
-        last_hour = datetime.now().hour
+        last_cycle_time = datetime.now()
+        cycle_interval = timedelta(minutes=CYCLE_MINUTES)
         
         while self.running:
             try:
@@ -476,10 +585,11 @@ class TradingBot:
                     if health.get('binance', {}).get('status') != 'healthy':
                         logger.warning("Binance API unhealthy - trading may be affected")
                 
-                # Run strategy at the top of each hour
-                if now.hour != last_hour and now.minute < 5:
+                # AGGRESSIVE: Run strategy every CYCLE_MINUTES (15 min default)
+                if now - last_cycle_time >= cycle_interval:
+                    logger.info(f"Starting cycle (every {CYCLE_MINUTES} min)")
                     await self.run_trading_cycle()
-                    last_hour = now.hour
+                    last_cycle_time = now
                 
                 await asyncio.sleep(1)
                 
