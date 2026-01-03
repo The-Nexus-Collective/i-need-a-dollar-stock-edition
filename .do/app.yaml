@@ -26,6 +26,9 @@ envs:
   - key: JWT_SECRET
     scope: RUN_AND_BUILD_TIME
     type: SECRET
+  - key: REDIS_URL
+    scope: RUN_TIME
+    type: SECRET
   - key: SCORE_THRESHOLD
     value: "65"
   - key: VOLUME_FILTER_RATIO
@@ -48,7 +51,7 @@ services:
       repo: The-Nexus-Collective/I-Need-A-Dollar
       branch: main
       deploy_on_push: true
-    source_dir: /backend
+    source_dir: backend
     dockerfile_path: Dockerfile
     http_port: 8000
     instance_size_slug: basic-xxs  # $5/mo - upgrade as needed
@@ -62,14 +65,6 @@ services:
       http_path: /health
       initial_delay_seconds: 10
       period_seconds: 30
-    envs:
-      - key: DATABASE_URL
-        scope: RUN_TIME
-        value: ${db.DATABASE_URL}
-      - key: REDIS_URL
-        scope: RUN_TIME
-        value: ${redis.DATABASE_URL}
-
   # ═══════════════════════════════════════════════════════════════════════════
   # FRONTEND (Next.js)
   # ═══════════════════════════════════════════════════════════════════════════
@@ -78,7 +73,7 @@ services:
       repo: The-Nexus-Collective/I-Need-A-Dollar
       branch: main
       deploy_on_push: true
-    source_dir: /frontend
+    source_dir: frontend
     dockerfile_path: Dockerfile
     http_port: 3000
     instance_size_slug: basic-xxs
@@ -104,7 +99,7 @@ workers:
       repo: The-Nexus-Collective/I-Need-A-Dollar
       branch: main
       deploy_on_push: true
-    source_dir: /backend
+    source_dir: backend
     dockerfile_path: Dockerfile
     instance_size_slug: basic-xxs
     instance_count: 1
@@ -113,9 +108,6 @@ workers:
       - key: DATABASE_URL
         scope: RUN_TIME
         value: ${db.DATABASE_URL}
-      - key: REDIS_URL
-        scope: RUN_TIME
-        value: ${redis.DATABASE_URL}
 
   # ═══════════════════════════════════════════════════════════════════════════
   # SIGNAL ENGINE
@@ -125,7 +117,7 @@ workers:
       repo: The-Nexus-Collective/I-Need-A-Dollar
       branch: main
       deploy_on_push: true
-    source_dir: /backend
+    source_dir: backend
     dockerfile_path: Dockerfile
     instance_size_slug: basic-xxs
     instance_count: 1
@@ -134,9 +126,6 @@ workers:
       - key: DATABASE_URL
         scope: RUN_TIME
         value: ${db.DATABASE_URL}
-      - key: REDIS_URL
-        scope: RUN_TIME
-        value: ${redis.DATABASE_URL}
 
   # ═══════════════════════════════════════════════════════════════════════════
   # RISK MANAGER
@@ -146,7 +135,7 @@ workers:
       repo: The-Nexus-Collective/I-Need-A-Dollar
       branch: main
       deploy_on_push: true
-    source_dir: /backend
+    source_dir: backend
     dockerfile_path: Dockerfile
     instance_size_slug: basic-xxs
     instance_count: 1
@@ -155,26 +144,13 @@ workers:
       - key: DATABASE_URL
         scope: RUN_TIME
         value: ${db.DATABASE_URL}
-      - key: REDIS_URL
-        scope: RUN_TIME
-        value: ${redis.DATABASE_URL}
 
 # ─── DATABASES ─────────────────────────────────────────────────────────────────
-# These reference managed databases you create separately in DO
-# After creating them, attach them to this app
+# References existing managed PostgreSQL cluster
 
 databases:
   - name: db
     engine: PG
-    production: false  # Set to true for production (enables backups, HA)
-    cluster_name: i-need-a-dollar-db
-    db_name: trading_platform
-    db_user: trading_user
-    version: "15"
-
-  - name: redis
-    engine: REDIS
-    production: false
-    cluster_name: i-need-a-dollar-redis
-    version: "7"
+    cluster_name: i-need-a-dollar
+    production: true
 
