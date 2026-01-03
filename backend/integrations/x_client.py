@@ -99,10 +99,28 @@ class XHypeDetector:
     HYPE_KEYWORDS = [
         "breakout", "moon", "moonshot", "rocket", "explosion",
         "massive gains", "undervalued", "gem", "going parabolic",
-        "all time high", "ATH", "bullish", "buy the dip"
+        "all time high", "ATH", "bullish", "buy the dip",
+        "100x", "1000x", "sleeping giant", "accumulating"
     ]
     
-    # Defense/tech specific keywords
+    # Crypto-specific keywords
+    CRYPTO_KEYWORDS = [
+        "altcoin", "memecoin", "defi", "nft", "web3",
+        "pump", "ape", "degen", "airdrop", "listing",
+        "binance", "coinbase", "launch", "presale"
+    ]
+    
+    # Narrative keywords for crypto
+    CRYPTO_NARRATIVES = {
+        "ai": ["AI crypto", "artificial intelligence", "machine learning", "LLM"],
+        "meme": ["meme coin", "doge", "shib", "pepe", "wojak", "frog"],
+        "defi": ["defi", "yield", "staking", "lending", "liquidity"],
+        "l2": ["layer 2", "L2", "rollup", "zk", "optimistic"],
+        "rwa": ["RWA", "real world asset", "tokenized", "tokenization"],
+        "gaming": ["gamefi", "P2E", "play to earn", "gaming"],
+    }
+    
+    # Defense/tech specific keywords (for stocks)
     SECTOR_KEYWORDS = {
         "defense": ["contract", "Pentagon", "DoD", "military", "defense AI"],
         "tech": ["AI", "artificial intelligence", "machine learning", "chip", "semiconductor"],
@@ -331,6 +349,142 @@ class XHypeDetector:
         if self._client:
             await self._client.aclose()
             self._client = None
+    
+    def _build_crypto_query(self, coin: str, include_hype: bool = True) -> str:
+        """Build search query for a cryptocurrency"""
+        parts = [f"${coin}"]  # Cashtag
+        
+        if include_hype:
+            hype_terms = " OR ".join(self.HYPE_KEYWORDS[:5] + self.CRYPTO_KEYWORDS[:3])
+            parts.append(f"({hype_terms})")
+        
+        parts.append("-is:retweet lang:en")
+        return " ".join(parts)
+    
+    async def search_crypto_hype(
+        self,
+        coins: List[str],
+        queries: Optional[List[str]] = None,
+    ) -> Dict[str, List[Tweet]]:
+        """
+        Search for crypto hype across multiple coins.
+        
+        Args:
+            coins: List of coin symbols (e.g., ['BTC', 'ETH', 'SOL'])
+            queries: Optional custom queries to add
+        
+        Returns:
+            Dict mapping coin -> list of tweets
+        """
+        results = {}
+        
+        # Search for each coin
+        for coin in coins:
+            query = self._build_crypto_query(coin)
+            tweets = await self.search_tweets(query, max_results=50)
+            results[coin] = tweets
+            await asyncio.sleep(0.5)  # Rate limiting
+        
+        # Run custom queries if provided
+        if queries:
+            for query in queries[:3]:  # Limit queries
+                tweets = await self.search_tweets(query, max_results=50)
+                # Extract coins from tweets
+                for tweet in tweets:
+                    for coin in self._extract_coins(tweet.text):
+                        if coin not in results:
+                            results[coin] = []
+                        results[coin].append(tweet)
+                await asyncio.sleep(0.5)
+        
+        return results
+    
+    def _extract_coins(self, text: str) -> List[str]:
+        """Extract cryptocurrency symbols from tweet text."""
+        import re
+        
+        # Match $SYMBOL patterns (2-10 uppercase letters)
+        cashtags = re.findall(r'\$([A-Z]{2,10})\b', text.upper())
+        
+        # Filter out non-crypto
+        skip = {'USD', 'EUR', 'GBP', 'JPY', 'CNY', 'INR', 'AUD', 'CAD', 'SPY', 'QQQ'}
+        coins = [c for c in cashtags if c not in skip]
+        
+        return list(set(coins))
+    
+    async def detect_trending_narratives(self) -> Dict[str, List[Tweet]]:
+        """
+        Detect trending crypto narratives on X.
+        
+        Returns:
+            Dict mapping narrative -> top tweets
+        """
+        narratives = {}
+        
+        for narrative, keywords in self.CRYPTO_NARRATIVES.items():
+            query = f"({' OR '.join(keywords)}) crypto -is:retweet lang:en min_faves:50"
+            tweets = await self.search_tweets(query, max_results=30)
+            
+            if tweets:
+                narratives[narrative] = sorted(
+                    tweets,
+                    key=lambda t: t.engagement_score,
+                    reverse=True
+                )[:5]
+            
+            await asyncio.sleep(0.5)
+        
+        return narratives
+    
+    async def get_crypto_hype_score(self, coin: str) -> HypeScore:
+        """
+        Get hype score for a cryptocurrency.
+        
+        Similar to stock hype score but with crypto-specific query.
+        """
+        cache_key = f"crypto_{coin}_{datetime.utcnow().strftime('%Y%m%d%H')}"
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+        
+        query = self._build_crypto_query(coin)
+        tweets = await self.search_tweets(query, max_results=100)
+        
+        # Filter by engagement
+        high_engagement = [
+            t for t in tweets
+            if t.like_count >= 20 or t.retweet_count >= 5  # Lower thresholds for crypto
+        ]
+        
+        if not high_engagement:
+            high_engagement = tweets
+        
+        total_engagement = sum(t.engagement_score for t in high_engagement)
+        avg_engagement = total_engagement / len(high_engagement) if high_engagement else 0
+        
+        import math
+        raw_score = math.log10(max(1, total_engagement)) * 20
+        normalized_score = min(100, max(0, raw_score))
+        
+        high_engagement.sort(key=lambda t: t.engagement_score, reverse=True)
+        
+        result = HypeScore(
+            symbol=coin,
+            score=normalized_score,
+            tweet_count=len(tweets),
+            total_engagement=total_engagement,
+            avg_engagement=avg_engagement,
+            top_tweets=high_engagement[:5],
+            query_used=query,
+        )
+        
+        self._cache[cache_key] = result
+        
+        logger.info(
+            f"Crypto hype score for {coin}: {normalized_score:.1f} "
+            f"({len(tweets)} tweets, {total_engagement:.0f} engagement)"
+        )
+        
+        return result
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

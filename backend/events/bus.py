@@ -1,37 +1,35 @@
 """
-Redis Streams Event Bus
-Persistent, ordered, with consumer groups for reliable event processing
+In-Memory Event Bus (No Redis Required)
+
+Provides the same API as the Redis version but uses asyncio queues.
+All events are stored in-memory for real-time processing.
+For a monolithic application, this is faster and simpler.
 """
 
 import asyncio
 import json
 import logging
-import os
+from collections import deque
 from datetime import datetime
 from typing import AsyncIterator, Callable, Dict, List, Optional, Set
-from uuid import UUID
-
-import redis.asyncio as redis
-from redis.asyncio.client import Redis
 
 from .schemas import BaseEvent, EventType, deserialize_event
 
 logger = logging.getLogger(__name__)
 
 
-class EventBus:
+class InMemoryEventBus:
     """
-    Redis Streams-based event bus for reliable event delivery.
+    In-memory event bus using asyncio primitives.
     
     Features:
-    - Persistent events (survives restarts)
-    - Ordered delivery per stream
-    - Consumer groups for load balancing
-    - Automatic acknowledgment
-    - Dead letter handling
+    - asyncio.Queue for pub/sub
+    - In-memory event history (configurable size)
+    - Same API as Redis version for drop-in replacement
+    - WebSocket broadcast support
     """
     
-    # Stream names for different event categories
+    # Stream names (kept for API compatibility)
     STREAMS = {
         "signals": "trading:signals",
         "risk": "trading:risk",
@@ -68,71 +66,91 @@ class EventBus:
         EventType.MARKET_DATA_STALE: "market",
     }
     
-    def __init__(self, redis_url: str = None):
-        # Handle empty string case
-        env_url = os.getenv("REDIS_URL", "").strip()
-        self.redis_url = redis_url or env_url or "redis://localhost:6379"
-        logger.info(f"EventBus using Redis URL: {self.redis_url[:30]}...")
-        self._redis: Optional[Redis] = None
-        self._pubsub: Optional[redis.client.PubSub] = None
-        self._subscribers: Dict[str, List[Callable]] = {}
+    def __init__(self, history_size: int = 10000):
+        """
+        Initialize in-memory event bus.
+        
+        Args:
+            history_size: Max events to keep per stream (for get_recent_events)
+        """
+        self.history_size = history_size
+        self._connected = False
+        
+        # Event queues per stream (for consumers)
+        self._queues: Dict[str, List[asyncio.Queue]] = {}
+        
+        # Event history per stream (for get_recent_events)
+        self._history: Dict[str, deque] = {}
+        
+        # Real-time subscribers (for WebSocket forwarding)
+        self._realtime_subscribers: Dict[str, List[Callable]] = {}
+        
+        # Running state
         self._running = False
         self._consumer_tasks: List[asyncio.Task] = []
+        
+        # Initialize streams
+        for stream_key in self.STREAMS:
+            self._queues[stream_key] = []
+            self._history[stream_key] = deque(maxlen=history_size)
+        
+        logger.info("InMemoryEventBus initialized")
     
     async def connect(self) -> None:
-        """Connect to Redis"""
-        if self._redis is None:
-            self._redis = await redis.from_url(
-                self.redis_url,
-                encoding="utf-8",
-                decode_responses=False  # We handle our own encoding
-            )
-            logger.info(f"Connected to Redis at {self.redis_url}")
+        """Connect (no-op for in-memory, kept for API compatibility)"""
+        self._connected = True
+        logger.info("InMemoryEventBus connected")
     
     async def disconnect(self) -> None:
-        """Disconnect from Redis"""
+        """Disconnect and cleanup"""
         self._running = False
+        self._connected = False
+        
+        # Cancel all consumer tasks
         for task in self._consumer_tasks:
             task.cancel()
-        if self._pubsub:
-            await self._pubsub.close()
-        if self._redis:
-            await self._redis.close()
-            self._redis = None
-        logger.info("Disconnected from Redis")
+        
+        # Clear queues
+        for stream_key in self._queues:
+            self._queues[stream_key] = []
+        
+        logger.info("InMemoryEventBus disconnected")
     
     async def publish(self, event: BaseEvent) -> str:
         """
         Publish an event to the appropriate stream.
-        Returns the message ID assigned by Redis.
+        
+        Returns a synthetic message ID.
         """
-        await self.connect()
+        if not self._connected:
+            await self.connect()
         
-        # Determine stream based on event type
-        stream_key = self.EVENT_STREAM_MAP.get(
-            EventType(event.type) if isinstance(event.type, str) else event.type,
-            "system"
-        )
-        stream_name = self.STREAMS[stream_key]
+        # Determine stream
+        event_type = EventType(event.type) if isinstance(event.type, str) else event.type
+        stream_key = self.EVENT_STREAM_MAP.get(event_type, "system")
         
-        # Serialize event
-        event_data = event.to_redis_dict()
+        # Generate message ID
+        message_id = f"{datetime.utcnow().timestamp()}-{event.id}"
         
-        # Add to stream (XADD)
-        message_id = await self._redis.xadd(
-            stream_name,
-            event_data,
-            maxlen=10000  # Keep last 10k events per stream
-        )
+        # Add to history
+        self._history[stream_key].append((message_id, event))
         
-        # Also publish to pub/sub for real-time subscribers (WebSocket)
-        await self._redis.publish(
-            f"realtime:{stream_key}",
-            event.model_dump_json()
-        )
+        # Notify all queue consumers
+        for queue in self._queues.get(stream_key, []):
+            try:
+                queue.put_nowait((message_id, event))
+            except asyncio.QueueFull:
+                logger.warning(f"Queue full for {stream_key}, dropping event")
         
-        logger.debug(f"Published {event.type} to {stream_name}: {message_id}")
-        return message_id.decode() if isinstance(message_id, bytes) else message_id
+        # Notify real-time subscribers (for WebSocket)
+        for callback in self._realtime_subscribers.get(stream_key, []):
+            try:
+                await callback(stream_key, event)
+            except Exception as e:
+                logger.error(f"Error in realtime subscriber: {e}")
+        
+        logger.debug(f"Published {event.type} to {stream_key}: {message_id}")
+        return message_id
     
     async def create_consumer_group(
         self,
@@ -140,24 +158,9 @@ class EventBus:
         group_name: str,
         start_id: str = "0"
     ) -> bool:
-        """Create a consumer group for a stream"""
-        await self.connect()
-        stream_name = self.STREAMS[stream_key]
-        
-        try:
-            await self._redis.xgroup_create(
-                stream_name,
-                group_name,
-                id=start_id,
-                mkstream=True
-            )
-            logger.info(f"Created consumer group {group_name} for {stream_name}")
-            return True
-        except redis.ResponseError as e:
-            if "BUSYGROUP" in str(e):
-                logger.debug(f"Consumer group {group_name} already exists")
-                return True
-            raise
+        """Create consumer group (no-op for in-memory, kept for API compatibility)"""
+        logger.debug(f"Consumer group {group_name} ready for {stream_key}")
+        return True
     
     async def consume(
         self,
@@ -169,50 +172,45 @@ class EventBus:
         block_ms: int = 5000
     ) -> None:
         """
-        Consume events from a stream with a consumer group.
-        Automatically acknowledges processed events.
+        Consume events from a stream.
+        
+        Creates an asyncio.Queue for this consumer and processes events.
         """
-        await self.connect()
-        await self.create_consumer_group(stream_key, group_name)
+        if not self._connected:
+            await self.connect()
         
-        stream_name = self.STREAMS[stream_key]
+        # Create queue for this consumer
+        queue = asyncio.Queue(maxsize=1000)
+        self._queues[stream_key].append(queue)
+        
         self._running = True
+        logger.info(f"Consumer {consumer_name} started for {stream_key}")
         
-        logger.info(f"Starting consumer {consumer_name} in group {group_name} for {stream_name}")
-        
-        while self._running:
-            try:
-                # Read new messages
-                messages = await self._redis.xreadgroup(
-                    group_name,
-                    consumer_name,
-                    {stream_name: ">"},  # Only new messages
-                    count=batch_size,
-                    block=block_ms
-                )
-                
-                if messages:
-                    for stream, entries in messages:
-                        for message_id, data in entries:
-                            try:
-                                event = deserialize_event(data)
-                                await handler(event)
-                                
-                                # Acknowledge successful processing
-                                await self._redis.xack(stream_name, group_name, message_id)
-                                logger.debug(f"Processed and acked {message_id}")
-                                
-                            except Exception as e:
-                                logger.error(f"Error processing {message_id}: {e}")
-                                # Could move to dead letter stream here
-                
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Consumer error: {e}")
-                await asyncio.sleep(1)
-        
-        logger.info(f"Consumer {consumer_name} stopped")
+        try:
+            while self._running:
+                try:
+                    # Wait for event with timeout
+                    message_id, event = await asyncio.wait_for(
+                        queue.get(),
+                        timeout=block_ms / 1000
+                    )
+                    
+                    try:
+                        await handler(event)
+                        logger.debug(f"Processed {message_id}")
+                    except Exception as e:
+                        logger.error(f"Error processing {message_id}: {e}")
+                    
+                except asyncio.TimeoutError:
+                    # No events, continue waiting
+                    continue
+                except asyncio.CancelledError:
+                    break
+        finally:
+            # Remove queue from list
+            if queue in self._queues.get(stream_key, []):
+                self._queues[stream_key].remove(queue)
+            logger.info(f"Consumer {consumer_name} stopped")
     
     async def consume_multiple(
         self,
@@ -224,43 +222,41 @@ class EventBus:
         block_ms: int = 5000
     ) -> None:
         """Consume from multiple streams simultaneously"""
-        await self.connect()
+        if not self._connected:
+            await self.connect()
         
-        # Create consumer groups for all streams
+        # Create queues for all streams
+        queues = {}
         for stream_key in stream_keys:
-            await self.create_consumer_group(stream_key, group_name)
+            queue = asyncio.Queue(maxsize=1000)
+            self._queues[stream_key].append(queue)
+            queues[stream_key] = queue
         
-        streams = {self.STREAMS[k]: ">" for k in stream_keys}
         self._running = True
+        logger.info(f"Multi-stream consumer {consumer_name} started for {stream_keys}")
         
-        logger.info(f"Starting multi-stream consumer {consumer_name} for {stream_keys}")
-        
-        while self._running:
-            try:
-                messages = await self._redis.xreadgroup(
-                    group_name,
-                    consumer_name,
-                    streams,
-                    count=batch_size,
-                    block=block_ms
-                )
+        try:
+            while self._running:
+                # Check all queues
+                for stream_key, queue in queues.items():
+                    try:
+                        message_id, event = queue.get_nowait()
+                        try:
+                            await handler(event)
+                        except Exception as e:
+                            logger.error(f"Error processing {message_id}: {e}")
+                    except asyncio.QueueEmpty:
+                        continue
                 
-                if messages:
-                    for stream_name, entries in messages:
-                        stream_name_str = stream_name.decode() if isinstance(stream_name, bytes) else stream_name
-                        for message_id, data in entries:
-                            try:
-                                event = deserialize_event(data)
-                                await handler(event)
-                                await self._redis.xack(stream_name_str, group_name, message_id)
-                            except Exception as e:
-                                logger.error(f"Error processing {message_id}: {e}")
-                
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Multi-consumer error: {e}")
-                await asyncio.sleep(1)
+                # Small sleep to prevent busy loop
+                await asyncio.sleep(0.01)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            # Remove queues
+            for stream_key, queue in queues.items():
+                if queue in self._queues.get(stream_key, []):
+                    self._queues[stream_key].remove(queue)
     
     async def subscribe_realtime(
         self,
@@ -268,87 +264,74 @@ class EventBus:
         handler: Callable[[str, BaseEvent], None]
     ) -> None:
         """
-        Subscribe to real-time pub/sub channels.
+        Subscribe to real-time events.
         Used for WebSocket forwarding.
         """
-        await self.connect()
-        self._pubsub = self._redis.pubsub()
-        
-        channel_names = [f"realtime:{c}" for c in channels]
-        await self._pubsub.subscribe(*channel_names)
+        for channel in channels:
+            if channel not in self._realtime_subscribers:
+                self._realtime_subscribers[channel] = []
+            self._realtime_subscribers[channel].append(handler)
         
         logger.info(f"Subscribed to real-time channels: {channels}")
         
+        # Keep running until cancelled
         self._running = True
-        while self._running:
-            try:
-                message = await self._pubsub.get_message(
-                    ignore_subscribe_messages=True,
-                    timeout=1.0
-                )
-                if message and message["type"] == "message":
-                    channel = message["channel"].decode().replace("realtime:", "")
-                    data = json.loads(message["data"])
-                    event = deserialize_event({b"data": message["data"]})
-                    await handler(channel, event)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Pub/sub error: {e}")
+        try:
+            while self._running:
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            # Remove handlers
+            for channel in channels:
+                if handler in self._realtime_subscribers.get(channel, []):
+                    self._realtime_subscribers[channel].remove(handler)
     
     async def get_stream_info(self, stream_key: str) -> Dict:
         """Get information about a stream"""
-        await self.connect()
-        stream_name = self.STREAMS[stream_key]
+        history = self._history.get(stream_key, deque())
         
-        try:
-            info = await self._redis.xinfo_stream(stream_name)
-            return {
-                "length": info["length"],
-                "first_entry": info.get("first-entry"),
-                "last_entry": info.get("last-entry"),
-                "groups": info.get("groups", 0),
-            }
-        except redis.ResponseError:
-            return {"length": 0, "error": "Stream does not exist"}
+        return {
+            "length": len(history),
+            "first_entry": history[0] if history else None,
+            "last_entry": history[-1] if history else None,
+            "consumers": len(self._queues.get(stream_key, [])),
+        }
     
     async def get_recent_events(
         self,
         stream_key: str,
         count: int = 100
     ) -> List[BaseEvent]:
-        """Get recent events from a stream (for dashboard)"""
-        await self.connect()
-        stream_name = self.STREAMS[stream_key]
+        """Get recent events from a stream"""
+        history = self._history.get(stream_key, deque())
         
-        try:
-            # XREVRANGE to get most recent first
-            messages = await self._redis.xrevrange(stream_name, count=count)
-            events = []
-            for message_id, data in messages:
-                try:
-                    event = deserialize_event(data)
-                    events.append(event)
-                except Exception as e:
-                    logger.warning(f"Failed to deserialize {message_id}: {e}")
-            return events
-        except redis.ResponseError:
-            return []
+        # Get last N events
+        events = []
+        for i, (message_id, event) in enumerate(reversed(history)):
+            if i >= count:
+                break
+            events.append(event)
+        
+        return events
 
+
+# Use InMemoryEventBus as the default EventBus
+EventBus = InMemoryEventBus
 
 # Global event bus instance
-_event_bus: Optional[EventBus] = None
+_event_bus: Optional[InMemoryEventBus] = None
 
 
-def get_event_bus() -> EventBus:
+def get_event_bus() -> InMemoryEventBus:
     """Get or create the global event bus instance"""
     global _event_bus
     if _event_bus is None:
-        _event_bus = EventBus()
+        _event_bus = InMemoryEventBus()
     return _event_bus
 
 
-async def init_event_bus() -> EventBus:
+async def init_event_bus() -> InMemoryEventBus:
     """Initialize and connect the event bus"""
     bus = get_event_bus()
     await bus.connect()

@@ -28,6 +28,11 @@ MIGRATIONS = [
     ("004", "004_leverage_and_paper_mode.sql"),
     ("005", "005_multi_asset.sql"),
     ("006", "006_velocity_metrics.sql"),
+    ("007", "007_agentic_system.sql"),
+    ("008", "008_swarm.sql"),
+    ("009", "009_trading_engine.sql"),
+    ("010", "010_simple_trader.sql"),
+    ("011", "011_add_trading_costs.sql"),
 ]
 
 

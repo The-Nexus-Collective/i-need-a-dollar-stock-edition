@@ -1,268 +1,195 @@
-# Production Trading Platform
+# I Need A Dollar 💸
 
-Enterprise-grade autonomous trading system with AI-powered sentiment analysis, real-time risk management, complete audit trails, and institutional-grade infrastructure.
+**Fully Autonomous Agentic Crypto Trading System (2026)**
 
-## Architecture
+A state-of-the-art trading platform featuring a multi-agent architecture powered by Grok AI. The system thinks, learns, experiments, and adapts continuously—operating like a top-tier quant trader with infinite curiosity while respecting strict risk controls.
+
+## 🧠 Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              FRONTEND LAYER                                  │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                     Next.js 14 Dashboard                             │   │
-│  │  • Command Center (equity, positions, signals)                       │   │
-│  │  • Risk Console (VaR, limits, circuit breakers)                      │   │
-│  │  • Audit Trail (hash-chain verified logs)                            │   │
-│  │  • Real-time WebSocket updates                                       │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              API GATEWAY                                     │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                      FastAPI + WebSocket                             │   │
-│  │  • JWT Authentication                                                │   │
-│  │  • REST API (/api/*)                                                 │   │
-│  │  • WebSocket (/ws) for real-time events                              │   │
-│  │  • OpenAPI documentation                                             │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           EVENT BUS (Redis Streams)                          │
-│  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐              │
-│  │  signals  │  │   risk    │  │  orders   │  │ positions │              │
-│  └───────────┘  └───────────┘  └───────────┘  └───────────┘              │
-│         ▲             ▲              ▲              ▲                      │
-│         │             │              │              │                      │
-│         ▼             ▼              ▼              ▼                      │
-│  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐              │
-│  │  Signal   │  │   Risk    │  │   Order   │  │ Portfolio │              │
-│  │  Engine   │  │  Manager  │  │ Executor  │  │  Manager  │              │
-│  └───────────┘  └───────────┘  └───────────┘  └───────────┘              │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              DATA LAYER                                      │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐         │
-│  │   PostgreSQL +    │  │      Redis       │  │   Audit Log      │         │
-│  │   TimescaleDB     │  │   (Event Bus)    │  │  (Hash-Chained)  │         │
-│  └──────────────────┘  └──────────────────┘  └──────────────────┘         │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           EXTERNAL SERVICES                                  │
-│  ┌──────────────────┐                      ┌──────────────────┐            │
-│  │     Grok AI      │                      │  Binance API     │            │
-│  │  (Sentiment)     │                      │ (Market Data)    │            │
-│  └──────────────────┘                      └──────────────────┘            │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         ORCHESTRATOR (Central Brain)                     │
+│                    Coordinates 15-minute trading cycles                  │
+└───────────────────────────────────┬─────────────────────────────────────┘
+                                    │
+        ┌───────────────────────────┼───────────────────────────┐
+        │                           │                           │
+        ▼                           ▼                           ▼
+┌───────────────┐           ┌───────────────┐           ┌───────────────┐
+│   Discovery   │           │   Validation  │           │   Sentiment   │
+│     Agent     │           │     Agent     │           │     Agent     │
+│               │           │               │           │               │
+│ CoinGecko API │           │ Volume checks │           │ Grok-powered  │
+│ X/Twitter     │           │ Exchange list │           │ Batch analysis│
+│ Hype scanning │           │ Age/Liquidity │           │ Regime detect │
+└───────────────┘           └───────────────┘           └───────────────┘
+        │                           │                           │
+        ▼                           ▼                           ▼
+┌───────────────┐           ┌───────────────┐           ┌───────────────┐
+│   Strategy    │           │   Execution   │           │    Learner    │
+│   Ensemble    │           │     Agent     │           │     Agent     │
+│               │           │               │           │               │
+│ 6 strategies  │           │ Paper/Live    │           │ Post-trade    │
+│ Meta-learning │           │ TWAP/Market   │           │ Reflection    │
+│ Weight adjust │           │ Risk checks   │           │ Memory store  │
+└───────────────┘           └───────────────┘           └───────────────┘
+                                    │
+                                    ▼
+                         ┌───────────────────┐
+                         │   Agent Logbook   │
+                         │                   │
+                         │ Full transparency │
+                         │ Semantic search   │
+                         │ pgvector storage  │
+                         └───────────────────┘
 ```
 
-## Quick Start
+## 🚀 Features
+
+### Multi-Agent System
+- **Discovery Agent**: Continuously discovers new opportunities from CoinGecko and X/Twitter
+- **Validation Agent**: Validates assets meet minimum requirements ($10M volume, 7+ days old)
+- **Sentiment Agent**: Batch Grok analysis for sentiment scoring and regime detection
+- **Strategy Ensemble**: 6 sub-strategies with meta-learning weight adjustment
+- **Execution Agent**: Paper trading with realistic fees and slippage simulation
+- **Learner Agent**: Post-trade reflection and memory-based learning
+
+### Dynamic Universe
+- No fixed coin list—the system discovers and validates opportunities autonomously
+- X/Twitter scanning for emerging coins and hype events
+- Narrative detection (AI, DeFi, meme coins, L2, RWA, gaming)
+- Automatic expiration of stale assets
+
+### Self-Improvement
+- Short/medium/long-term memory via pgvector
+- Semantic search for relevant past experiences
+- Strategy variant generation from trade reflections
+- Regime-aware weight adjustment
+
+### Risk Controls
+- 12% max per existing coin, 8% max per new coin
+- 35% max in new/unproven coins
+- 5% daily loss kill switch
+- 23:55 CET daily flatten
+- Grok-powered trade approval gate
+
+## 📁 Project Structure
+
+```
+backend/
+├── agents/                 # Multi-agent architecture
+│   ├── base.py            # BaseAgent with think/act/log lifecycle
+│   ├── logbook.py         # Central audit trail with pgvector
+│   ├── orchestrator.py    # Central brain coordinating all agents
+│   ├── discovery.py       # CoinGecko + X discovery
+│   ├── validation.py      # Asset validation pipeline
+│   ├── sentiment.py       # Grok-powered sentiment analysis
+│   ├── strategy_ensemble.py # 6 strategies + meta-learner
+│   ├── execution.py       # Trade execution (paper/live)
+│   └── learner.py         # Post-trade reflection + memory
+├── core/                   # Core trading logic
+├── gateway/               # FastAPI + WebSocket API
+├── integrations/          # External API clients
+│   ├── coingecko.py       # CoinGecko market data
+│   └── x_client.py        # X/Twitter hype detection
+├── migrations/            # PostgreSQL + pgvector migrations
+├── models/                # SQLAlchemy models
+└── main.py               # Main entry point
+
+frontend/
+├── app/
+│   ├── page.tsx          # Dashboard
+│   ├── agents/           # Agent Logbook viewer
+│   ├── universe/         # Dynamic universe explorer
+│   ├── strategies/       # Strategy ensemble viewer
+│   ├── positions/        # Open positions
+│   ├── history/          # Trade history
+│   └── risk/             # Risk metrics
+└── components/           # Reusable UI components
+```
+
+## 🛠 Setup
 
 ### Prerequisites
+- Docker & Docker Compose
+- Node.js 18+
+- Python 3.11+
 
-- Docker and Docker Compose
-- xAI API key from [x.ai/api](https://x.ai/api)
-
-### 1. Clone and Configure
+### Environment Variables
 
 ```bash
-git clone <repository-url>
-cd trading-platform
-
-# Copy and edit environment file
+# Copy example and fill in your keys
 cp env.example .env
 
-# Add your xAI API key
-nano .env
+# Required API Keys:
+# - XAI_API_KEY (Grok): https://console.x.ai
+# - X_BEARER_TOKEN: https://developer.twitter.com
+# - OPENAI_API_KEY (optional, for embeddings): https://platform.openai.com
 ```
 
-### 2. Launch the Platform
+### Running Locally
 
 ```bash
 # Start all services
-docker compose up --build
+docker-compose up -d
 
-# Or run in background
-docker compose up -d --build
+# Or use the helper script
+./scripts/start-local.sh
 ```
 
-### 3. Access the Dashboard
+### Services
+- **Backend API**: http://localhost:8000
+- **Frontend**: http://localhost:3000
+- **PostgreSQL**: localhost:5432 (with pgvector)
+- **Prometheus**: http://localhost:9090
 
-- **Streamlit Dashboard**: http://localhost:8501 (recommended)
-- **Next.js Dashboard**: http://localhost:3000
-- **API Docs**: http://localhost:8000/docs
-- **Grafana** (optional): http://localhost:3001
+## 🔄 Trading Cycle (Every 15 Minutes)
 
-## Services
+1. **Discovery**: Pull top 200 coins from CoinGecko, scan X for hype
+2. **Validation**: Filter to tradable assets (volume, exchange, age)
+3. **Sentiment**: Batch Grok analysis for all validated coins
+4. **Strategy**: Generate proposals from 6 strategies, apply weights
+5. **Approval**: Grok final decision on proposed trades
+6. **Execution**: Execute approved trades with paper/live mode
+7. **Learning**: Reflect on closed trades, store memories
 
-| Service | Port | Description |
-|---------|------|-------------|
-| **Streamlit Dashboard** | **8501** | **Real-time trading dashboard** |
-| Trading Bot | - | Main strategy orchestrator |
-| Frontend (Next.js) | 3000 | Alternative dashboard |
-| API Gateway (FastAPI) | 8000 | REST API + WebSocket |
-| PostgreSQL + TimescaleDB | 5432 | Primary database |
-| Redis | 6379 | Event bus |
-| Prometheus | 9090 | Metrics (optional) |
-| Grafana | 3001 | Dashboards (optional) |
+## 📊 Strategies
 
-## Trading Strategy
+| Strategy | Description | Best Regime |
+|----------|-------------|-------------|
+| **Momentum** | Ride strong trends with high conviction | Low/Normal Vol |
+| **Mean Reversion** | Fade extreme readings | Normal Vol |
+| **Hype Following** | Trade high X engagement coins | Euphoria |
+| **Contrarian** | Go against extreme crowd sentiment | Panic |
+| **Volatility Expansion** | Catch breakouts from low vol | Low Vol |
+| **Narrative Driven** | Trade dominant themes (AI, DeFi, etc) | Any |
 
-The bot implements a proven sentiment-driven strategy:
+## 🔒 Risk Limits
 
-### Core Logic
-1. **Every hour**: Query Grok AI for sentiment (-100 to +100) and narrative strength (0-100)
-2. **Calculate Score**: `Score = sentiment × (narrative / 100)`
-3. **Select best coin**: Highest |Score| that passes all filters
-4. **Execute**: Long if Score > 0, Short if Score < 0
+- **Per Coin**: 12% max (8% for new coins)
+- **New Coin Bucket**: 35% max in unproven assets
+- **Daily Loss**: 5% kill switch
+- **Total Deployment**: 90% max
+- **Leverage**: 3-6x adaptive
 
-### Filters
-- **Score Threshold**: Only trade if |Score| >= 65
-- **Volume Filter**: Only trade if 1h volume >= 80% of 24h average
+## 📝 Agent Logbook
 
-### Risk Management
-- **Position Size**: `2% equity / (1.5 × ATR)`
-- **Stop Loss**: 1.5 × ATR
-- **Take Profit**: 4 × ATR
-- **Daily Flatten**: All positions closed at 23:55 CET
+Every agent action is logged with full transparency:
+- **Reasoning**: Why did the agent do this?
+- **Decision**: What was decided?
+- **Confidence**: How certain was the agent?
+- **Duration**: How long did it take?
+- **Tokens**: How many Grok tokens were used?
 
-## Core Components
+Access the logbook at `/agents` in the frontend.
 
-### Signal Engine
-- Queries Grok AI for sentiment analysis on top 10 coins
-- Calculates combined score: `sentiment × (narrative / 100)`
-- Generates trading signals with confidence scores
-- Runs hourly (configurable)
-
-### Risk Manager
-- **Position Limits**: 10% per asset, 30% altcoins, 80% total deployed
-- **Drawdown Circuit Breakers**:
-  - Level 1 (5%): Reduce position sizes by 50%
-  - Level 2 (10%): Close all positions, switch to paper
-  - Level 3 (15%): Full system halt
-- **VaR Monitoring**: 95% VaR calculated in real-time
-- All trades require risk approval before execution
-
-### Order Executor
-- Paper mode: Simulated execution with market data from Binance
-- Live mode: Real execution via Binance Futures (requires API keys)
-- Automatic stop-loss and take-profit monitoring
-- Position tracking with P&L calculations
-
-### Audit System
-- Every decision logged with microsecond precision
-- Cryptographic hash chain for tamper detection
-- Before/after state capture
-- AI reasoning logging
-- Searchable audit trail in dashboard
-
-## Event Types
-
-```python
-# Signal Events
-SIGNAL_GENERATED      # New AI signal
-RISK_CHECK_REQUESTED  # Signal awaiting approval
-
-# Risk Events
-RISK_APPROVED         # Trade approved
-RISK_REJECTED         # Trade blocked
-CIRCUIT_BREAKER_TRIGGERED  # Emergency stop
-
-# Order Events
-ORDER_SUBMITTED       # Order sent
-ORDER_FILLED          # Execution confirmed
-
-# Position Events
-POSITION_OPENED       # New position
-POSITION_UPDATED      # P&L update
-POSITION_CLOSED       # Position closed
-```
-
-## API Endpoints
-
-### Authentication
-```bash
-# Get token
-curl -X POST http://localhost:8000/auth/token \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "admin"}'
-```
-
-### Portfolio
-```bash
-# Get current portfolio
-curl http://localhost:8000/api/portfolio
-
-# Get equity history
-curl http://localhost:8000/api/portfolio/history?limit=500
-```
-
-### Positions
-```bash
-# Get open positions
-curl http://localhost:8000/api/positions?status=open
-```
-
-### Signals
-```bash
-# Get latest signals
-curl http://localhost:8000/api/signals/latest
-```
-
-### Audit
-```bash
-# Get audit log
-curl http://localhost:8000/api/audit?limit=100
-
-# Verify chain integrity
-curl http://localhost:8000/api/audit/verify
-```
-
-## Strategy Parameters
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `SCORE_THRESHOLD` | 65 | Minimum |Score| to enter trade |
-| `VOLUME_FILTER_RATIO` | 0.80 | 1h vol must be >= 80% of 24h avg |
-| `RISK_PER_TRADE` | 0.02 | Risk 2% of equity per trade |
-| `STOP_LOSS_ATR_MULT` | 1.5 | Stop loss as ATR multiple |
-| `TAKE_PROFIT_ATR_MULT` | 4.0 | Take profit as ATR multiple |
-| `INITIAL_EQUITY` | 10000 | Starting paper equity in USDT |
-| `FLATTEN_TIME_CET` | 23:55 | Daily flatten time in CET |
-
-## Risk Parameters
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `POSITION_LIMIT_PER_ASSET` | 10% | Max in single asset |
-| `POSITION_LIMIT_ALTCOINS` | 30% | Max in non-BTC/ETH |
-| `MAX_DEPLOYED` | 80% | Max portfolio deployed |
-| `DRAWDOWN_LEVEL_1` | 5% | Circuit breaker level 1 |
-| `DRAWDOWN_LEVEL_2` | 10% | Circuit breaker level 2 |
-| `DRAWDOWN_LEVEL_3` | 15% | Circuit breaker level 3 |
-
-## Development
-
-### Local Setup
+## 🧪 Development
 
 ```bash
 # Backend
 cd backend
-python -m venv venv
-source venv/bin/activate
 pip install -r requirements.txt
-
-# Start services
-docker compose up postgres redis -d
-
-# Run gateway
-uvicorn gateway.main:app --reload
+python main.py
 
 # Frontend
 cd frontend
@@ -270,71 +197,10 @@ npm install
 npm run dev
 ```
 
-### Running Tests
+## 📜 License
 
-```bash
-cd backend
-pytest tests/ -v
-```
+MIT License - Use at your own risk. This is experimental software for paper trading.
 
-### Database Migrations
+---
 
-```bash
-# Generate migration
-alembic revision --autogenerate -m "description"
-
-# Apply migrations
-alembic upgrade head
-```
-
-## Monitoring
-
-### Enable Monitoring Stack
-
-```bash
-docker compose --profile monitoring up -d
-```
-
-Access Grafana at http://localhost:3001 (admin/admin)
-
-### Key Metrics
-
-- Portfolio equity over time
-- Position P&L
-- Signal accuracy
-- Risk limit utilization
-- System latency
-
-## Security Considerations
-
-1. **API Keys**: Never commit real keys to version control
-2. **JWT Secret**: Generate a strong random secret for production
-3. **Database**: Use strong passwords and network isolation
-4. **Paper Mode**: Always test thoroughly before live trading
-5. **Circuit Breakers**: Ensure they're properly configured
-
-## Live Trading Warning
-
-⚠️ **DANGER**: Live trading with real money carries significant risk.
-
-Before enabling live mode:
-1. Test extensively in paper mode
-2. Start with minimal capital
-3. Monitor continuously
-4. Have manual override procedures
-5. Understand all risks involved
-
-```bash
-# To enable live trading (NOT RECOMMENDED without extensive testing)
-MODE=live
-BINANCE_API_KEY=your_key
-BINANCE_API_SECRET=your_secret
-```
-
-## License
-
-MIT License - See LICENSE file for details.
-
-## Disclaimer
-
-This software is for educational and research purposes only. Trading cryptocurrencies involves significant risk of loss. Past performance does not guarantee future results. The authors are not responsible for any financial losses incurred through the use of this software.
+Built with ❤️ using Grok AI, FastAPI, Next.js, and PostgreSQL/pgvector

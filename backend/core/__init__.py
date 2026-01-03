@@ -1,18 +1,11 @@
-"""Core trading services"""
+"""
+Core trading services
 
-# Signal Engine (Grok API)
-from .signal_engine import (
-    GrokBatchClient,
-    fetch_all_sentiments,
-    TOP_COINS,
-)
-
-# Strategy
-from .strategy import (
-    StrategyEngine,
-    run_trading_cycle,
-    TradingDecision,
-)
+Note: The old signal_engine.py and strategy.py have been replaced by the
+agentic system in backend/agents/. See:
+- agents/sentiment.py - Replaces signal_engine (Grok sentiment)
+- agents/strategy_ensemble.py - Replaces strategy (trading decisions)
+"""
 
 # Market Data
 from .websocket_manager import (
@@ -34,6 +27,8 @@ from .account import (
     TradingAccount,
     get_trading_account,
     init_trading_account,
+    check_simulated_liquidation,
+    simulate_margin_call_check,
 )
 
 from .market_simulator import (
@@ -80,20 +75,14 @@ from .readiness_check import (
     is_ready_for_live,
 )
 
-# Leverage calculation
-from .strategy import (
-    calculate_adaptive_leverage,
-    detect_market_regime,
-)
-
-# Liquidation simulation
-from .account import (
-    check_simulated_liquidation,
-    simulate_margin_call_check,
+# Health tracking
+from .health_tracker import (
+    install_health_logging,
+    get_health_tracker,
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# MULTI-ASSET SUPPORT
+# MULTI-ASSET SUPPORT (Optional - for stock trading)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Multi-Account Manager
@@ -134,16 +123,6 @@ from .stock_strategy import (
 )
 
 __all__ = [
-    # Signal
-    "GrokBatchClient",
-    "fetch_all_sentiments",
-    "TOP_COINS",
-    # Strategy
-    "StrategyEngine",
-    "run_trading_cycle",
-    "TradingDecision",
-    "calculate_adaptive_leverage",
-    "detect_market_regime",
     # Market Data
     "BinanceWSManager",
     "get_ws_manager",
@@ -185,6 +164,9 @@ __all__ = [
     "get_readiness_checker",
     "check_live_readiness",
     "is_ready_for_live",
+    # Health
+    "install_health_logging",
+    "get_health_tracker",
     # Multi-Asset Support
     "MultiAccountManager",
     "get_multi_account_manager",

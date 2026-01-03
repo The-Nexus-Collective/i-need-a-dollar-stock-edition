@@ -17,6 +17,8 @@ import {
   Database,
   Wifi,
   Server,
+  Trash2,
+  RotateCcw,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -37,6 +39,10 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null)
+  const [resetting, setResetting] = useState(false)
+  const [resetSuccess, setResetSuccess] = useState(false)
+  const [resetError, setResetError] = useState<string | null>(null)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [accountData, setAccountData] = useState({
     balance: 108000,
     initialBalance: 108000,
@@ -106,9 +112,30 @@ export default function SettingsPage() {
     setSettings(prev => ({ ...prev, [key]: value }))
   }
 
+  const handleResetPaperTrades = async () => {
+    setResetting(true)
+    setResetError(null)
+    setResetSuccess(false)
+    
+    try {
+      const result = await api.resetPaperTrades()
+      console.log('Reset result:', result)
+      setResetSuccess(true)
+      setShowResetConfirm(false)
+      
+      // Clear success message after 5 seconds
+      setTimeout(() => setResetSuccess(false), 5000)
+    } catch (error) {
+      console.error('Failed to reset paper trades:', error)
+      setResetError(error instanceof Error ? error.message : 'Failed to reset trades')
+    } finally {
+      setResetting(false)
+    }
+  }
+
   return (
     <div className="flex min-h-screen">
-      <Sidebar accountData={accountData} isConnected={isConnected} />
+      <Sidebar isConnected={isConnected} />
 
       <main className="flex-1 ml-[280px] p-6 lg:p-8">
         {/* Header */}
@@ -511,6 +538,115 @@ export default function SettingsPage() {
               <p className="text-xs text-text-muted">
                 Only required for live trading. Paper mode uses public API.
               </p>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Danger Zone */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="glass-card p-6 mt-6 border-accent-red/30"
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <AlertTriangle className="w-5 h-5 text-accent-red" />
+            <h2 className="text-lg font-semibold text-accent-red">Danger Zone</h2>
+          </div>
+
+          <div className="p-4 rounded-lg bg-accent-red/5 border border-accent-red/20">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
+                  <RotateCcw className="w-4 h-4 text-accent-red" />
+                  Reset Paper Trading
+                </h3>
+                <p className="text-xs text-text-muted mt-1">
+                  Delete all paper trades, positions, and trading history. 
+                  The system will restart with initial capital of $100,000 USDT.
+                  This action cannot be undone.
+                </p>
+                
+                {/* Success Message */}
+                {resetSuccess && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-3 p-2 rounded-lg bg-accent-emerald/10 border border-accent-emerald/30"
+                  >
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-accent-emerald" />
+                      <span className="text-sm text-accent-emerald font-medium">
+                        Paper trades reset successfully! Starting fresh with $100,000.
+                      </span>
+                    </div>
+                  </motion.div>
+                )}
+                
+                {/* Error Message */}
+                {resetError && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-3 p-2 rounded-lg bg-accent-red/10 border border-accent-red/30"
+                  >
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-accent-red" />
+                      <span className="text-sm text-accent-red">{resetError}</span>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+              
+              <div className="flex-shrink-0">
+                {!showResetConfirm ? (
+                  <button
+                    onClick={() => setShowResetConfirm(true)}
+                    disabled={resetting}
+                    className={clsx(
+                      'flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all',
+                      'bg-accent-red/10 text-accent-red border border-accent-red/30',
+                      'hover:bg-accent-red/20',
+                      resetting && 'opacity-50 cursor-not-allowed'
+                    )}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Reset All Trades
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowResetConfirm(false)}
+                      disabled={resetting}
+                      className="px-3 py-2 rounded-lg text-sm font-medium text-text-muted hover:text-text-secondary transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleResetPaperTrades}
+                      disabled={resetting}
+                      className={clsx(
+                        'flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all',
+                        'bg-accent-red text-white',
+                        'hover:bg-accent-red/80',
+                        resetting && 'opacity-50 cursor-not-allowed'
+                      )}
+                    >
+                      {resetting ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Resetting...
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="w-4 h-4" />
+                          Confirm Reset
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </motion.div>

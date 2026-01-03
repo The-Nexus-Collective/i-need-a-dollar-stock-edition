@@ -1,12 +1,17 @@
-version: '3.8'
+# ═══════════════════════════════════════════════════════════════════════════════
+# SIMPLIFIED ARCHITECTURE: 3 Containers
+# - PostgreSQL (Database)
+# - Backend (Bot + API in one process)
+# - Frontend (Next.js Dashboard)
+# ═══════════════════════════════════════════════════════════════════════════════
 
 services:
   # ═══════════════════════════════════════════════════════════════════════════
-  # DATA LAYER
+  # DATABASE
   # ═══════════════════════════════════════════════════════════════════════════
   
   postgres:
-    image: timescale/timescaledb:latest-pg15
+    image: pgvector/pgvector:pg15
     container_name: trading_db
     environment:
       POSTGRES_DB: trading_platform
@@ -17,6 +22,10 @@ services:
       - ./backend/migrations/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
       - ./backend/migrations/002_add_filter_columns.sql:/docker-entrypoint-initdb.d/02_filters.sql:ro
       - ./backend/migrations/003_account_state.sql:/docker-entrypoint-initdb.d/03_account.sql:ro
+      - ./backend/migrations/004_leverage_and_paper_mode.sql:/docker-entrypoint-initdb.d/04_leverage.sql:ro
+      - ./backend/migrations/005_multi_asset.sql:/docker-entrypoint-initdb.d/05_multi_asset.sql:ro
+      - ./backend/migrations/006_velocity_metrics.sql:/docker-entrypoint-initdb.d/06_velocity.sql:ro
+      - ./backend/migrations/007_agentic_system.sql:/docker-entrypoint-initdb.d/07_agentic.sql:ro
     ports:
       - "5432:5432"
     healthcheck:
@@ -26,98 +35,17 @@ services:
       retries: 5
     restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    container_name: trading_redis
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy noeviction
-    volumes:
-      - redis_data:/data
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    restart: unless-stopped
-
   # ═══════════════════════════════════════════════════════════════════════════
-  # BACKEND SERVICES
+  # BACKEND (Bot + API combined)
   # ═══════════════════════════════════════════════════════════════════════════
 
-  gateway:
+  backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: trading_gateway
+    container_name: trading_backend
     environment:
       - DATABASE_URL=postgresql://trading_user:${DB_PASSWORD:-trading_secret_2024}@postgres:5432/trading_platform
-      - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
-      - XAI_API_KEY=${XAI_API_KEY}
-      - MODE=${MODE:-paper}
-      - BINANCE_API_KEY=${BINANCE_API_KEY:-}
-      - BINANCE_API_SECRET=${BINANCE_API_SECRET:-}
-    ports:
-      - "8000:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./backend:/app
-    command: uvicorn gateway.main:app --host 0.0.0.0 --port 8000 --reload
-    restart: unless-stopped
-
-  signal_engine:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: trading_signals
-    environment:
-      - DATABASE_URL=postgresql://trading_user:${DB_PASSWORD:-trading_secret_2024}@postgres:5432/trading_platform
-      - REDIS_URL=redis://redis:6379
-      - XAI_API_KEY=${XAI_API_KEY}
-      - MODE=${MODE:-paper}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./backend:/app
-    command: python -m core.signal_engine
-    restart: unless-stopped
-
-  risk_manager:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: trading_risk
-    environment:
-      - DATABASE_URL=postgresql://trading_user:${DB_PASSWORD:-trading_secret_2024}@postgres:5432/trading_platform
-      - REDIS_URL=redis://redis:6379
-      - MODE=${MODE:-paper}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./backend:/app
-    command: python -m core.risk_manager
-    restart: unless-stopped
-
-  # Trading bot - main strategy orchestrator
-  bot:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: trading_bot
-    environment:
-      - DATABASE_URL=postgresql://trading_user:${DB_PASSWORD:-trading_secret_2024}@postgres:5432/trading_platform
-      - REDIS_URL=redis://redis:6379
       - XAI_API_KEY=${XAI_API_KEY}
       - MODE=${MODE:-paper}
       - SCORE_THRESHOLD=${SCORE_THRESHOLD:-65}
@@ -125,39 +53,26 @@ services:
       - RISK_PER_TRADE=${RISK_PER_TRADE:-0.02}
       - INITIAL_EQUITY=${INITIAL_EQUITY:-10000}
       - FLATTEN_TIME_CET=${FLATTEN_TIME_CET:-23:55}
+      - CYCLE_MINUTES=${CYCLE_MINUTES:-15}
+      - FORCE_TRADE=${FORCE_TRADE:-false}
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - CORS_ALLOW_ALL=true
+      # Binance API (optional, for live trading)
+      - BINANCE_API_KEY=${BINANCE_API_KEY:-}
+      - BINANCE_API_SECRET=${BINANCE_API_SECRET:-}
+    ports:
+      - "8000:8000"
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     volumes:
       - ./backend:/app
-    command: python bot.py
+    command: python main.py
     restart: unless-stopped
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # DASHBOARD
-  # ═══════════════════════════════════════════════════════════════════════════
-
-  dashboard:
-    build:
-      context: .
-      dockerfile: Dockerfile.streamlit
-    container_name: trading_dashboard
-    environment:
-      - DATABASE_URL=postgresql://trading_user:${DB_PASSWORD:-trading_secret_2024}@postgres:5432/trading_platform
-      - MODE=${MODE:-paper}
-    ports:
-      - "8501:8501"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    volumes:
-      - ./dashboard.py:/app/dashboard.py
-    restart: unless-stopped
-
-  # ═══════════════════════════════════════════════════════════════════════════
-  # FRONTEND (Next.js - Optional)
+  # FRONTEND (Next.js Dashboard)
   # ═══════════════════════════════════════════════════════════════════════════
 
   frontend:
@@ -171,11 +86,11 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - gateway
+      - backend
     restart: unless-stopped
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # MONITORING (Optional)
+  # MONITORING (Optional - activate with: docker compose --profile monitoring up)
   # ═══════════════════════════════════════════════════════════════════════════
 
   prometheus:
@@ -206,7 +121,6 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
   prometheus_data:
   grafana_data:
 

@@ -13,6 +13,9 @@ import {
   RefreshCw,
   AlertCircle,
   Info,
+  Gauge,
+  TrendingUp,
+  Zap,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -30,6 +33,33 @@ interface RiskEvent {
   action_taken: string
   details: any
   acknowledged: boolean
+}
+
+interface MarginPosition {
+  coin: string
+  side: string
+  leverage: number
+  entry_price: number
+  current_price: number
+  liquidation_price: number
+  distance_to_liq_pct: number
+  price_change_pct: number
+  margin_used: number
+  status: 'safe' | 'warning' | 'danger' | 'liquidated'
+}
+
+interface MarginHealth {
+  overall_status: 'safe' | 'warning' | 'danger' | 'critical'
+  summary: {
+    total_positions: number
+    positions_safe: number
+    positions_warning: number
+    positions_danger: number
+    total_margin_used: number
+    margin_utilization_pct: number
+    closest_to_liq_pct: number | null
+  }
+  positions: MarginPosition[]
 }
 
 function formatCurrency(value: number, showSign = false): string {
@@ -79,6 +109,290 @@ const severityConfig = {
     icon: XCircle,
   },
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MARGIN HEALTH SECTION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const marginStatusConfig = {
+  safe: {
+    color: 'text-accent-emerald',
+    bg: 'bg-accent-emerald/10',
+    border: 'border-accent-emerald/30',
+    label: 'Healthy',
+  },
+  warning: {
+    color: 'text-accent-amber',
+    bg: 'bg-accent-amber/10',
+    border: 'border-accent-amber/30',
+    label: 'Warning',
+  },
+  danger: {
+    color: 'text-accent-red',
+    bg: 'bg-accent-red/10',
+    border: 'border-accent-red/30',
+    label: 'At Risk',
+  },
+  liquidated: {
+    color: 'text-accent-red',
+    bg: 'bg-accent-red/20',
+    border: 'border-accent-red/50',
+    label: 'Liquidated',
+  },
+  critical: {
+    color: 'text-accent-red',
+    bg: 'bg-accent-red/20',
+    border: 'border-accent-red/50',
+    label: 'Critical',
+  },
+}
+
+function MarginPositionCard({ position }: { position: MarginPosition }) {
+  const config = marginStatusConfig[position.status]
+  const isLong = position.side === 'long'
+  
+  // Progress bar: 0% = at liquidation, 100% = very safe (>20% distance)
+  const progressPct = Math.min(100, Math.max(0, position.distance_to_liq_pct * 5))
+  
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className={clsx(
+        'glass-card p-4 border-l-4',
+        config.border
+      )}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-lg font-bold text-text-primary">{position.coin}</span>
+          <span className={clsx(
+            'px-2 py-0.5 text-xs font-bold rounded uppercase',
+            isLong 
+              ? 'bg-accent-emerald/20 text-accent-emerald' 
+              : 'bg-accent-red/20 text-accent-red'
+          )}>
+            {position.side}
+          </span>
+          <span className="px-2 py-0.5 text-xs font-mono font-bold rounded bg-accent-cyan/20 text-accent-cyan">
+            {position.leverage.toFixed(1)}x
+          </span>
+        </div>
+        <span className={clsx(
+          'px-2 py-0.5 text-xs font-medium rounded uppercase',
+          config.bg,
+          config.color
+        )}>
+          {config.label}
+        </span>
+      </div>
+
+      {/* Distance to liquidation progress bar */}
+      <div className="mb-3">
+        <div className="flex items-center justify-between text-xs mb-1">
+          <span className="text-text-muted">Distance to Liquidation</span>
+          <span className={clsx('font-mono font-bold', config.color)}>
+            {position.distance_to_liq_pct.toFixed(1)}%
+          </span>
+        </div>
+        <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
+          <div 
+            className={clsx(
+              'h-full rounded-full transition-all duration-500',
+              position.status === 'safe' ? 'bg-accent-emerald' :
+              position.status === 'warning' ? 'bg-accent-amber' : 'bg-accent-red'
+            )}
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Price info grid */}
+      <div className="grid grid-cols-3 gap-2 text-xs">
+        <div className="p-2 rounded bg-void/30">
+          <span className="text-text-dim block mb-0.5">Entry</span>
+          <span className="font-mono text-text-primary">${position.entry_price.toLocaleString()}</span>
+        </div>
+        <div className="p-2 rounded bg-void/30">
+          <span className="text-text-dim block mb-0.5">Current</span>
+          <span className={clsx(
+            'font-mono',
+            position.price_change_pct >= 0 ? 'text-accent-emerald' : 'text-accent-red'
+          )}>
+            ${position.current_price.toLocaleString()}
+          </span>
+        </div>
+        <div className="p-2 rounded bg-void/30">
+          <span className="text-text-dim block mb-0.5">Liquidation</span>
+          <span className="font-mono text-accent-red">${position.liquidation_price.toLocaleString()}</span>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+function MarginHealthSection({ marginHealth, loading }: { marginHealth: MarginHealth | null; loading: boolean }) {
+  if (loading) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-card p-8 mb-8 text-center"
+      >
+        <div className="w-6 h-6 border-2 border-accent-cyan border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+        <p className="text-text-muted text-sm">Loading margin health...</p>
+      </motion.div>
+    )
+  }
+
+  if (!marginHealth || marginHealth.summary.total_positions === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-card p-8 mb-8"
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <Gauge className="w-5 h-5 text-accent-cyan" />
+          <h2 className="text-lg font-semibold text-text-primary">Margin Health</h2>
+        </div>
+        <div className="text-center py-6">
+          <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-accent-cyan/10 flex items-center justify-center">
+            <CheckCircle className="w-6 h-6 text-accent-cyan" />
+          </div>
+          <p className="text-text-secondary">No open positions</p>
+          <p className="text-text-dim text-sm mt-1">Margin health will appear when positions are opened</p>
+        </div>
+      </motion.div>
+    )
+  }
+
+  const overallConfig = marginStatusConfig[marginHealth.overall_status]
+  const atRiskCount = marginHealth.summary.positions_warning + marginHealth.summary.positions_danger
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mb-8"
+    >
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-4">
+        <Gauge className="w-5 h-5 text-accent-cyan" />
+        <h2 className="text-lg font-semibold text-text-primary">Margin Health</h2>
+        <span className={clsx(
+          'px-2 py-0.5 text-xs font-bold rounded uppercase ml-2',
+          overallConfig.bg,
+          overallConfig.color
+        )}>
+          {overallConfig.label}
+        </span>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Activity className="w-4 h-4 text-accent-cyan" />
+            <span className="text-label">Margin Used</span>
+          </div>
+          <div className="text-xl font-mono font-semibold text-text-primary">
+            {formatCurrency(marginHealth.summary.total_margin_used)}
+          </div>
+          <p className="text-xs text-text-muted mt-1">
+            {marginHealth.summary.margin_utilization_pct.toFixed(1)}% of capital
+          </p>
+        </div>
+
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className={clsx('w-4 h-4', atRiskCount > 0 ? 'text-accent-amber' : 'text-accent-emerald')} />
+            <span className="text-label">Positions at Risk</span>
+          </div>
+          <div className={clsx(
+            'text-xl font-mono font-semibold',
+            atRiskCount > 0 ? 'text-accent-amber' : 'text-accent-emerald'
+          )}>
+            {atRiskCount}
+          </div>
+          <p className="text-xs text-text-muted mt-1">
+            of {marginHealth.summary.total_positions} total positions
+          </p>
+        </div>
+
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Zap className="w-4 h-4 text-accent-amber" />
+            <span className="text-label">Closest to Liq.</span>
+          </div>
+          <div className={clsx(
+            'text-xl font-mono font-semibold',
+            marginHealth.summary.closest_to_liq_pct && marginHealth.summary.closest_to_liq_pct < 10 
+              ? 'text-accent-red' 
+              : marginHealth.summary.closest_to_liq_pct && marginHealth.summary.closest_to_liq_pct < 15
+                ? 'text-accent-amber'
+                : 'text-accent-emerald'
+          )}>
+            {marginHealth.summary.closest_to_liq_pct !== null 
+              ? `${marginHealth.summary.closest_to_liq_pct.toFixed(1)}%` 
+              : '—'}
+          </div>
+          <p className="text-xs text-text-muted mt-1">
+            distance to liquidation
+          </p>
+        </div>
+
+        <div className={clsx('glass-card p-4 border', overallConfig.border)}>
+          <div className="flex items-center gap-2 mb-2">
+            <Shield className={clsx('w-4 h-4', overallConfig.color)} />
+            <span className="text-label">Overall Status</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className={clsx(
+              'w-3 h-3 rounded-full',
+              marginHealth.overall_status === 'safe' 
+                ? 'bg-accent-emerald shadow-[0_0_8px_rgba(0,255,136,0.5)]'
+                : marginHealth.overall_status === 'warning'
+                  ? 'bg-accent-amber shadow-[0_0_8px_rgba(255,170,51,0.5)] animate-pulse'
+                  : 'bg-accent-red shadow-[0_0_8px_rgba(255,71,87,0.5)] animate-pulse'
+            )} />
+            <span className={clsx('text-xl font-semibold', overallConfig.color)}>
+              {overallConfig.label}
+            </span>
+          </div>
+          <p className="text-xs text-text-muted mt-1">
+            {marginHealth.summary.positions_safe} safe, {marginHealth.summary.positions_warning} warning, {marginHealth.summary.positions_danger} danger
+          </p>
+        </div>
+      </div>
+
+      {/* Position Cards */}
+      {marginHealth.positions.length > 0 && (
+        <>
+          <h3 className="text-sm font-semibold text-text-secondary mb-3 uppercase tracking-wider">
+            Position Details (sorted by risk)
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {marginHealth.positions.map((position, idx) => (
+              <motion.div
+                key={position.coin}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.05 }}
+              >
+                <MarginPositionCard position={position} />
+              </motion.div>
+            ))}
+          </div>
+        </>
+      )}
+    </motion.div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RISK EVENT CARD
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function RiskEventCard({ event, onAcknowledge }: { event: RiskEvent; onAcknowledge: (id: string) => void }) {
   const config = severityConfig[event.severity]
@@ -167,7 +481,9 @@ function RiskEventCard({ event, onAcknowledge }: { event: RiskEvent; onAcknowled
 export default function RiskPage() {
   const [riskEvents, setRiskEvents] = useState<RiskEvent[]>([])
   const [loading, setLoading] = useState(true)
+  const [marginLoading, setMarginLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | 'unacknowledged' | 'critical' | 'high'>('all')
+  const [marginHealth, setMarginHealth] = useState<MarginHealth | null>(null)
   const [portfolioData, setPortfolioData] = useState({
     var_95: null as number | null,
     max_drawdown: null as number | null,
@@ -192,6 +508,17 @@ export default function RiskPage() {
       }
     },
   })
+
+  async function fetchMarginHealth() {
+    try {
+      const data = await api.getMarginHealth()
+      setMarginHealth(data)
+    } catch (error) {
+      console.error('Failed to fetch margin health:', error)
+    } finally {
+      setMarginLoading(false)
+    }
+  }
 
   async function fetchRiskEvents() {
     try {
@@ -228,8 +555,13 @@ export default function RiskPage() {
 
   useEffect(() => {
     fetchRiskEvents()
-    const interval = setInterval(fetchRiskEvents, 30000)
-    return () => clearInterval(interval)
+    fetchMarginHealth()
+    const riskInterval = setInterval(fetchRiskEvents, 30000)
+    const marginInterval = setInterval(fetchMarginHealth, 10000)
+    return () => {
+      clearInterval(riskInterval)
+      clearInterval(marginInterval)
+    }
   }, [])
 
   // Filter events
@@ -255,7 +587,7 @@ export default function RiskPage() {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar accountData={accountData} isConnected={isConnected} />
+      <Sidebar isConnected={isConnected} />
 
       <main className="flex-1 ml-[280px] p-6 lg:p-8">
         {/* Header */}
@@ -381,6 +713,9 @@ export default function RiskPage() {
             </div>
           </motion.div>
         </div>
+
+        {/* Margin Health Section */}
+        <MarginHealthSection marginHealth={marginHealth} loading={marginLoading} />
 
         {/* Risk Parameters */}
         <motion.div

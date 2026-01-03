@@ -51,14 +51,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       return
     }
 
-    // Compute WebSocket URL dynamically from current location
-    let wsUrl: string
-    if (typeof window !== 'undefined') {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      wsUrl = `${protocol}//${window.location.host}/ws`
-    } else {
-      wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000/ws'
-    }
+    // Compute WebSocket URL - use backend directly
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000/ws'
     const url = `${wsUrl}?channel=${channel}`
 
     try {
@@ -170,6 +164,123 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 // Store for global state management
 import { create } from 'zustand'
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACTIVITY LOG TYPES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export type ActivityCategory = 'signal' | 'order' | 'position' | 'risk' | 'system' | 'portfolio'
+
+export interface ActivityEntry {
+  id: string
+  timestamp: string
+  category: ActivityCategory
+  eventType: string
+  title: string
+  description: string
+  coin?: string
+  details?: Record<string, any>
+}
+
+// Map event types to activity categories
+function getActivityCategory(eventType: string): ActivityCategory {
+  if (eventType.includes('signal')) return 'signal'
+  if (eventType.includes('order')) return 'order'
+  if (eventType.includes('position')) return 'position'
+  if (eventType.includes('risk')) return 'risk'
+  if (eventType.includes('portfolio')) return 'portfolio'
+  return 'system'
+}
+
+// Format event into readable activity entry
+function formatActivityEntry(event: any): ActivityEntry | null {
+  const eventType = event.event_type || event.type
+  if (!eventType) return null
+  
+  // Skip heartbeats and pings
+  if (eventType.includes('heartbeat') || eventType === 'ping' || eventType === 'pong') {
+    return null
+  }
+  
+  const category = getActivityCategory(eventType)
+  const timestamp = event.timestamp || new Date().toISOString()
+  const data = event.data || {}
+  
+  let title = ''
+  let description = ''
+  let coin = data.coin || data.symbol
+  
+  switch (eventType) {
+    case 'signal.generated':
+      title = `Signal: ${data.recommended_action?.toUpperCase() || 'ANALYSE'}`
+      description = `${coin} Score: ${data.combined_score?.toFixed(1) || '?'}`
+      break
+    case 'order.submitted':
+      title = `Order gesendet`
+      description = `${data.side?.toUpperCase()} ${coin} @ ${data.price?.toLocaleString() || 'Market'}`
+      break
+    case 'order.filled':
+      title = `Order ausgeführt`
+      description = `${data.side?.toUpperCase()} ${data.quantity} ${coin} @ $${data.fill_price?.toLocaleString()}`
+      break
+    case 'order.rejected':
+      title = `Order abgelehnt`
+      description = `${coin}: ${data.reason || 'Unbekannter Grund'}`
+      break
+    case 'position.opened':
+      title = `Position eröffnet`
+      description = `${data.side?.toUpperCase()} ${coin} @ $${data.entry_price?.toLocaleString()}`
+      break
+    case 'position.closed':
+      const pnl = data.realized_pnl
+      const pnlStr = pnl >= 0 ? `+$${pnl?.toFixed(2)}` : `-$${Math.abs(pnl)?.toFixed(2)}`
+      title = `Position geschlossen`
+      description = `${coin}: ${pnlStr} (${data.close_reason || 'manual'})`
+      break
+    case 'position.updated':
+      title = `Position Update`
+      description = `${coin} PnL: ${data.unrealized_pnl_percent?.toFixed(2)}%`
+      break
+    case 'risk.approved':
+      title = `Risiko genehmigt`
+      description = `${coin} ${data.action?.toUpperCase()}`
+      break
+    case 'risk.rejected':
+      title = `Risiko abgelehnt`
+      description = `${coin}: ${data.rejection_reasons?.join(', ') || 'Limit überschritten'}`
+      break
+    case 'risk.limit_breach':
+      title = `Risiko-Limit erreicht`
+      description = `${data.limit_type}: ${data.current_value?.toFixed(2)} > ${data.threshold_value?.toFixed(2)}`
+      break
+    case 'portfolio.snapshot':
+      title = `Portfolio Update`
+      description = `Equity: $${data.total_equity?.toLocaleString()}`
+      break
+    case 'system.circuit_breaker':
+      title = `Circuit Breaker!`
+      description = `Level ${data.level}: ${data.action_taken}`
+      break
+    default:
+      title = eventType.split('.').pop()?.replace(/_/g, ' ') || 'Event'
+      description = JSON.stringify(data).slice(0, 50)
+  }
+  
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    timestamp,
+    category,
+    eventType,
+    title,
+    description,
+    coin,
+    details: data,
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TRADING STATE STORE
+// ═══════════════════════════════════════════════════════════════════════════════
+
 interface TradingState {
   portfolio: {
     total_equity: number
@@ -187,6 +298,9 @@ interface TradingState {
   isConnected: boolean
   lastUpdate: string | null
   
+  // Activity Log
+  activityLog: ActivityEntry[]
+  
   // Actions
   setPortfolio: (portfolio: any) => void
   setPositions: (positions: any[]) => void
@@ -195,6 +309,8 @@ interface TradingState {
   addRiskEvent: (event: any) => void
   setConnected: (connected: boolean) => void
   updateFromEvent: (event: any) => void
+  addActivity: (entry: ActivityEntry) => void
+  clearActivityLog: () => void
 }
 
 export const useTradingStore = create<TradingState>((set, get) => ({
@@ -205,6 +321,7 @@ export const useTradingStore = create<TradingState>((set, get) => ({
   riskEvents: [],
   isConnected: false,
   lastUpdate: null,
+  activityLog: [],
 
   setPortfolio: (portfolio) => set({ portfolio, lastUpdate: new Date().toISOString() }),
   setPositions: (positions) => set({ positions }),
@@ -213,8 +330,22 @@ export const useTradingStore = create<TradingState>((set, get) => ({
   addRiskEvent: (event) => set(state => ({ riskEvents: [event, ...state.riskEvents].slice(0, 50) })),
   setConnected: (isConnected) => set({ isConnected }),
   
+  // Activity Log actions
+  addActivity: (entry) => set(state => ({
+    activityLog: [entry, ...state.activityLog].slice(0, 200)
+  })),
+  clearActivityLog: () => set({ activityLog: [] }),
+  
   updateFromEvent: (event) => {
     const eventType = event.event_type || event.type
+    
+    // Add to activity log
+    const activityEntry = formatActivityEntry(event)
+    if (activityEntry) {
+      set(state => ({
+        activityLog: [activityEntry, ...state.activityLog].slice(0, 200)
+      }))
+    }
     
     if (eventType?.includes('portfolio')) {
       set({ portfolio: event.data, lastUpdate: new Date().toISOString() })

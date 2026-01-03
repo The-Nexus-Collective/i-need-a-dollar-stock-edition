@@ -10,7 +10,6 @@ import {
   Shield,
   DollarSign,
   BarChart2,
-  Filter,
   RefreshCw,
 } from 'lucide-react'
 import { clsx } from 'clsx'
@@ -21,18 +20,24 @@ import { useWebSocket } from '@/lib/websocket'
 
 interface Position {
   id: string
-  coin: string
-  side: 'long' | 'short'
+  symbol: string
+  direction: string  // API returns 'LONG' or 'SHORT'
   quantity: number
   entry_price: number
-  current_price: number
-  unrealized_pnl: number
-  realized_pnl: number
-  stop_loss: number
-  take_profit: number
+  size_usdt: number
+  leverage: number
+  stop_loss_price: number | null
+  take_profit_price: number | null
   status: string
-  opened_at: string
-  closed_at: string | null
+  entry_time: string
+  exit_time: string | null
+  exit_price: number | null
+  realized_pnl: number
+  conviction: number
+  reasoning: string | null
+  // Computed fields (not from API)
+  current_price?: number
+  unrealized_pnl?: number
 }
 
 function formatCurrency(value: number, showSign = false): string {
@@ -57,20 +62,34 @@ function formatPercentage(value: number, showSign = false): string {
 }
 
 function PositionRow({ position }: { position: Position }) {
-  const isLong = position.side === 'long'
-  const isProfitable = position.unrealized_pnl >= 0
-  const pnlPercent = position.entry_price > 0 
-    ? ((position.current_price - position.entry_price) / position.entry_price) * 100 * (isLong ? 1 : -1)
+  // Handle direction from API
+  const isLong = position.direction?.toUpperCase() === 'LONG'
+  const displaySide = isLong ? 'LONG' : 'SHORT'
+  
+  // Use current_price or fallback to entry_price
+  const currentPrice = position.current_price || position.entry_price || 0
+  const entryPrice = position.entry_price || 0
+  
+  const isProfitable = (position.unrealized_pnl || position.realized_pnl || 0) >= 0
+  const pnlPercent = entryPrice > 0 
+    ? ((currentPrice - entryPrice) / entryPrice) * 100 * (isLong ? 1 : -1)
     : 0
 
+  // Get coin symbol (remove USDT suffix if present)
+  const coin = position.symbol?.replace('USDT', '') || 'UNKNOWN'
+
+  // Get SL/TP values
+  const stopLoss = position.stop_loss_price || 0
+  const takeProfit = position.take_profit_price || 0
+
   // Calculate distance to SL/TP
-  const distanceToSL = isLong 
-    ? ((position.current_price - position.stop_loss) / position.current_price) * 100
-    : ((position.stop_loss - position.current_price) / position.current_price) * 100
+  const distanceToSL = (stopLoss && currentPrice) ? (isLong 
+    ? ((currentPrice - stopLoss) / currentPrice) * 100
+    : ((stopLoss - currentPrice) / currentPrice) * 100) : 0
   
-  const distanceToTP = isLong
-    ? ((position.take_profit - position.current_price) / position.current_price) * 100
-    : ((position.current_price - position.take_profit) / position.current_price) * 100
+  const distanceToTP = (takeProfit && currentPrice) ? (isLong
+    ? ((takeProfit - currentPrice) / currentPrice) * 100
+    : ((currentPrice - takeProfit) / currentPrice) * 100) : 0
 
   return (
     <motion.tr
@@ -92,26 +111,31 @@ function PositionRow({ position }: { position: Position }) {
             )}
           </div>
           <div>
-            <span className="font-semibold text-text-primary">{position.coin}</span>
+            <span className="font-semibold text-text-primary">{coin}</span>
             <span className={clsx(
               'ml-2 text-xs px-2 py-0.5 rounded-full',
               isLong ? 'bg-accent-emerald/20 text-accent-emerald' : 'bg-accent-red/20 text-accent-red'
             )}>
-              {position.side.toUpperCase()}
+              {displaySide}
             </span>
+            {position.leverage && (
+              <span className="ml-1 text-xs text-accent-cyan">{position.leverage}x</span>
+            )}
             <p className="text-xs text-text-muted mt-0.5">
               <Clock className="w-3 h-3 inline mr-1" />
-              {new Date(position.opened_at).toLocaleString()}
+              {new Date(position.entry_time).toLocaleString()}
             </p>
           </div>
         </div>
       </td>
 
-      {/* Quantity */}
+      {/* Quantity / Size */}
       <td className="py-4 px-4 text-right">
-        <span className="font-mono text-text-primary">{position.quantity.toFixed(6)}</span>
+        <span className="font-mono text-text-primary">
+          {position.quantity?.toFixed(6) || position.size_usdt?.toFixed(0) || '-'}
+        </span>
         <p className="text-xs text-text-muted">
-          {formatCurrency(position.quantity * position.current_price)}
+          {position.size_usdt ? formatCurrency(position.size_usdt) : formatCurrency((position.quantity || 0) * currentPrice)}
         </p>
       </td>
 
@@ -128,38 +152,46 @@ function PositionRow({ position }: { position: Position }) {
           'font-mono',
           isProfitable ? 'text-accent-emerald' : 'text-accent-red'
         )}>
-          {formatCurrency(position.current_price)}
+          {formatCurrency(currentPrice)}
         </span>
       </td>
 
       {/* Stop Loss */}
       <td className="py-4 px-4 text-right">
-        <div className="flex items-center justify-end gap-2">
-          <Shield className="w-4 h-4 text-accent-red" />
-          <div>
-            <span className="font-mono text-text-primary">
-              {formatCurrency(position.stop_loss)}
-            </span>
-            <p className="text-xs text-accent-red">
-              {distanceToSL.toFixed(1)}% away
-            </p>
+        {stopLoss > 0 ? (
+          <div className="flex items-center justify-end gap-2">
+            <Shield className="w-4 h-4 text-accent-red" />
+            <div>
+              <span className="font-mono text-text-primary">
+                {formatCurrency(stopLoss)}
+              </span>
+              <p className="text-xs text-accent-red">
+                {distanceToSL.toFixed(1)}% away
+              </p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <span className="text-text-muted">-</span>
+        )}
       </td>
 
       {/* Take Profit */}
       <td className="py-4 px-4 text-right">
-        <div className="flex items-center justify-end gap-2">
-          <Target className="w-4 h-4 text-accent-emerald" />
-          <div>
-            <span className="font-mono text-text-primary">
-              {formatCurrency(position.take_profit)}
-            </span>
-            <p className="text-xs text-accent-emerald">
-              {distanceToTP.toFixed(1)}% away
-            </p>
+        {takeProfit > 0 ? (
+          <div className="flex items-center justify-end gap-2">
+            <Target className="w-4 h-4 text-accent-emerald" />
+            <div>
+              <span className="font-mono text-text-primary">
+                {formatCurrency(takeProfit)}
+              </span>
+              <p className="text-xs text-accent-emerald">
+                {distanceToTP.toFixed(1)}% away
+              </p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <span className="text-text-muted">-</span>
+        )}
       </td>
 
       {/* Unrealized PnL */}
@@ -168,7 +200,7 @@ function PositionRow({ position }: { position: Position }) {
           'font-mono font-semibold',
           isProfitable ? 'text-accent-emerald' : 'text-accent-red'
         )}>
-          {formatCurrency(position.unrealized_pnl, true)}
+          {formatCurrency(position.unrealized_pnl || 0, true)}
         </div>
         <p className={clsx(
           'text-xs',
@@ -193,18 +225,7 @@ function PositionRow({ position }: { position: Position }) {
 
 export default function PositionsPage() {
   const [positions, setPositions] = useState<Position[]>([])
-  const [closedPositions, setClosedPositions] = useState<Position[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<'all' | 'open' | 'closed'>('all')
-  const [accountData, setAccountData] = useState({
-    balance: 108000,
-    initialBalance: 108000,
-    totalFees: 0,
-    slippageCost: 0,
-    totalTrades: 0,
-    winningTrades: 0,
-    mode: 'paper' as const,
-  })
 
   const { isConnected } = useWebSocket({
     channel: 'trading',
@@ -217,12 +238,8 @@ export default function PositionsPage() {
 
   async function fetchPositions() {
     try {
-      const [openData, closedData] = await Promise.all([
-        api.getPositions('open').catch(() => []),
-        api.getPositions('closed').catch(() => []),
-      ])
+      const openData = await api.getPositions('open').catch(() => [])
       setPositions(openData as Position[])
-      setClosedPositions(closedData as Position[])
     } catch (error) {
       console.error('Failed to fetch positions:', error)
     } finally {
@@ -232,24 +249,23 @@ export default function PositionsPage() {
 
   useEffect(() => {
     fetchPositions()
-    const interval = setInterval(fetchPositions, 10000)
+    const interval = setInterval(fetchPositions, 5000) // Faster refresh for open positions
     return () => clearInterval(interval)
   }, [])
 
-  const displayedPositions = filter === 'all' 
-    ? [...positions, ...closedPositions]
-    : filter === 'open' 
-      ? positions 
-      : closedPositions
-
-  // Calculate totals
-  const totalUnrealizedPnl = positions.reduce((sum, p) => sum + p.unrealized_pnl, 0)
-  const totalRealizedPnl = closedPositions.reduce((sum, p) => sum + p.realized_pnl, 0)
-  const totalValue = positions.reduce((sum, p) => sum + (p.quantity * p.current_price), 0)
+  // Calculate totals - use 0 for undefined unrealized_pnl
+  const totalUnrealizedPnl = positions.reduce((sum, p) => sum + (p.unrealized_pnl || 0), 0)
+  // Total value = invested amount + unrealized PnL (current market value)
+  const totalInvested = positions.reduce((sum, p) => sum + (p.size_usdt || 0), 0)
+  const totalValue = totalInvested + totalUnrealizedPnl
+  // Calculate total leverage exposure
+  const avgLeverage = positions.length > 0 
+    ? positions.reduce((sum, p) => sum + (p.leverage || 1), 0) / positions.length 
+    : 0
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar accountData={accountData} isConnected={isConnected} />
+      <Sidebar isConnected={isConnected} />
 
       <main className="flex-1 ml-[280px] p-6 lg:p-8">
         {/* Header */}
@@ -260,10 +276,10 @@ export default function PositionsPage() {
               animate={{ opacity: 1, x: 0 }}
               className="text-2xl font-semibold text-text-primary tracking-tight"
             >
-              Positions
+              Open Positions
             </motion.h1>
             <p className="text-xs text-text-muted mt-1">
-              Manage and monitor your trading positions
+              Current holdings • Updates every 5 seconds
             </p>
           </div>
 
@@ -334,37 +350,14 @@ export default function PositionsPage() {
           >
             <div className="flex items-center gap-2 mb-2">
               <Target className="w-4 h-4 text-accent-amber" />
-              <span className="text-label">Realized P&L</span>
+              <span className="text-label">Avg Leverage</span>
             </div>
-            <div className={clsx(
-              'text-2xl font-mono font-semibold',
-              totalRealizedPnl >= 0 ? 'text-accent-emerald' : 'text-accent-red'
-            )}>
-              {formatCurrency(totalRealizedPnl, true)}
+            <div className="text-2xl font-mono font-semibold text-accent-amber">
+              {avgLeverage.toFixed(1)}x
             </div>
           </motion.div>
         </div>
 
-        {/* Filter Tabs */}
-        <div className="flex gap-2 mb-6">
-          {(['all', 'open', 'closed'] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={clsx(
-                'px-4 py-2 rounded-lg text-sm font-medium transition-all',
-                filter === f
-                  ? 'bg-accent-cyan/20 text-accent-cyan border border-accent-cyan/30'
-                  : 'text-text-muted hover:text-text-secondary hover:bg-glass-bg'
-              )}
-            >
-              {f === 'all' ? 'All Positions' : f === 'open' ? 'Open' : 'Closed'}
-              <span className="ml-2 text-xs opacity-60">
-                ({f === 'all' ? positions.length + closedPositions.length : f === 'open' ? positions.length : closedPositions.length})
-              </span>
-            </button>
-          ))}
-        </div>
 
         {/* Positions Table */}
         <motion.div
@@ -377,7 +370,7 @@ export default function PositionsPage() {
               <div className="w-8 h-8 border-2 border-accent-cyan border-t-transparent rounded-full animate-spin mx-auto mb-4" />
               <p className="text-text-muted">Loading positions...</p>
             </div>
-          ) : displayedPositions.length > 0 ? (
+          ) : positions.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -409,7 +402,7 @@ export default function PositionsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {displayedPositions.map((position) => (
+                  {positions.map((position) => (
                     <PositionRow key={position.id} position={position} />
                   ))}
                 </tbody>
@@ -422,11 +415,7 @@ export default function PositionsPage() {
               </div>
               <p className="text-text-muted font-medium mb-1">Keine Positionen</p>
               <p className="text-text-dim text-sm">
-                {filter === 'open' 
-                  ? 'Keine offenen Positionen vorhanden.'
-                  : filter === 'closed'
-                    ? 'Keine geschlossenen Positionen vorhanden.'
-                    : 'Der Bot hat noch keine Trades ausgeführt.'}
+                Keine offenen Positionen vorhanden.
               </p>
             </div>
           )}

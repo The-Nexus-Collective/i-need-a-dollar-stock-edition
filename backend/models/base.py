@@ -7,6 +7,9 @@ from datetime import datetime
 from typing import AsyncGenerator
 from uuid import uuid4
 
+# IMPORTANT: Import greenlet before SQLAlchemy to ensure async support works
+import greenlet  # noqa: F401
+
 from sqlalchemy import Column, DateTime, create_engine, event
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
@@ -112,15 +115,15 @@ class UUIDMixin:
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """Dependency for getting database session"""
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
+    session = AsyncSessionLocal()
+    try:
+        yield session
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+    finally:
+        await session.close()
 
 
 async def init_db() -> None:

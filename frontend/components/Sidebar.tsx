@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -15,43 +15,87 @@ import {
   Wallet,
   Activity,
   Zap,
-  BarChart3,
+  AlertTriangle,
 } from 'lucide-react'
 import { clsx } from 'clsx'
+import { usePortfolio } from '@/lib/usePortfolio'
+import { api } from '@/lib/api'
 
-interface AccountData {
-  balance: number
-  initialBalance: number
-  totalFees: number
-  slippageCost: number
-  totalTrades: number
-  winningTrades: number
-  mode: 'paper' | 'live'
+interface MarginHealth {
+  overall_status: 'safe' | 'warning' | 'danger' | 'critical'
+  summary: {
+    total_positions: number
+    positions_safe: number
+    positions_warning: number
+    positions_danger: number
+  }
 }
 
 interface SidebarProps {
-  accountData: AccountData
   isConnected: boolean
 }
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/' },
-  { icon: BarChart3, label: 'Stocks', href: '/stocks' },
   { icon: TrendingUp, label: 'Positions', href: '/positions' },
   { icon: History, label: 'History', href: '/history' },
   { icon: Shield, label: 'Risk', href: '/risk' },
   { icon: Settings, label: 'Settings', href: '/settings' },
 ]
 
-export function Sidebar({ accountData, isConnected }: SidebarProps) {
+export function Sidebar({ isConnected }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const { portfolio } = usePortfolio(5000)
   const pathname = usePathname()
+  const [marginHealth, setMarginHealth] = useState<MarginHealth | null>(null)
 
-  const pnl = accountData.balance - accountData.initialBalance
-  const pnlPercent = (pnl / accountData.initialBalance) * 100
-  const winRate = accountData.totalTrades > 0 
-    ? (accountData.winningTrades / accountData.totalTrades) * 100 
-    : 0
+  // Fetch margin health data
+  useEffect(() => {
+    async function fetchMarginHealth() {
+      try {
+        const data = await api.getMarginHealth()
+        setMarginHealth(data)
+      } catch (error) {
+        console.error('Failed to fetch margin health:', error)
+      }
+    }
+    
+    fetchMarginHealth()
+    const interval = setInterval(fetchMarginHealth, 10000) // Poll every 10 seconds
+    return () => clearInterval(interval)
+  }, [])
+
+  const pnl = portfolio.totalPnl
+  const pnlPercent = portfolio.pnlPercent
+  const winRate = portfolio.winRate
+
+  // Margin status display config
+  const marginStatusConfig = {
+    safe: {
+      dotClass: 'bg-accent-emerald shadow-[0_0_8px_rgba(0,255,136,0.5)]',
+      textClass: 'text-accent-emerald',
+      label: 'Margin OK',
+    },
+    warning: {
+      dotClass: 'bg-accent-amber shadow-[0_0_8px_rgba(255,170,51,0.5)] animate-pulse',
+      textClass: 'text-accent-amber',
+      label: 'Margin Warning',
+    },
+    danger: {
+      dotClass: 'bg-accent-red shadow-[0_0_8px_rgba(255,71,87,0.5)] animate-pulse',
+      textClass: 'text-accent-red',
+      label: 'Margin Risk',
+    },
+    critical: {
+      dotClass: 'bg-accent-red shadow-[0_0_12px_rgba(255,71,87,0.7)] animate-pulse',
+      textClass: 'text-accent-red',
+      label: 'MARGIN CRITICAL',
+    },
+  }
+  
+  const marginStatus = marginHealth?.overall_status || 'safe'
+  const marginConfig = marginStatusConfig[marginStatus]
+  const atRiskCount = (marginHealth?.summary.positions_warning || 0) + (marginHealth?.summary.positions_danger || 0)
 
   return (
     <motion.aside
@@ -86,24 +130,62 @@ export function Sidebar({ accountData, isConnected }: SidebarProps) {
 
       {/* Status */}
       <div className="px-5 py-4 border-b border-glass-border">
-        <div className="flex items-center gap-2">
-          <div className={clsx('status-dot', isConnected ? 'live' : 'offline')} />
+        {/* Paper mode indicator */}
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-2 h-2 rounded-full bg-accent-amber shadow-[0_0_8px_rgba(255,170,51,0.5)]" />
           <AnimatePresence mode="wait">
             {!collapsed && (
               <motion.span
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -10 }}
-                className={clsx(
-                  'text-xs font-medium uppercase tracking-wider',
-                  accountData.mode === 'paper' ? 'text-accent-amber' : 'text-accent-emerald'
-                )}
+                className="text-xs font-medium uppercase tracking-wider text-accent-amber"
               >
-                {accountData.mode === 'paper' ? 'Paper Mode' : 'Live Trading'}
+                Paper Mode
               </motion.span>
             )}
           </AnimatePresence>
         </div>
+        
+        {/* Margin health indicator */}
+        <Link href="/risk" className="block">
+          <div className={clsx(
+            'flex items-center gap-2 transition-opacity',
+            marginHealth?.summary.total_positions === 0 && 'opacity-50'
+          )}>
+            <div className={clsx('w-2 h-2 rounded-full', marginConfig.dotClass)} />
+            <AnimatePresence mode="wait">
+              {!collapsed && (
+                <motion.div
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -10 }}
+                  className="flex items-center gap-1.5"
+                >
+                  <span className={clsx('text-xs font-medium uppercase tracking-wider', marginConfig.textClass)}>
+                    {marginHealth?.summary.total_positions === 0 ? 'No Positions' : marginConfig.label}
+                  </span>
+                  {atRiskCount > 0 && (
+                    <span className={clsx(
+                      'px-1.5 py-0.5 text-[10px] font-bold rounded',
+                      marginStatus === 'warning' 
+                        ? 'bg-accent-amber/20 text-accent-amber'
+                        : 'bg-accent-red/20 text-accent-red'
+                    )}>
+                      {atRiskCount}
+                    </span>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+            {collapsed && atRiskCount > 0 && (
+              <AlertTriangle className={clsx(
+                'w-3 h-3 absolute right-2',
+                marginStatus === 'warning' ? 'text-accent-amber' : 'text-accent-red'
+              )} />
+            )}
+          </div>
+        </Link>
       </div>
 
       {/* Navigation */}
@@ -159,14 +241,17 @@ export function Sidebar({ accountData, isConnected }: SidebarProps) {
                 <Wallet className="w-4 h-4 text-accent-cyan" />
                 <span className="text-label">Portfolio Value</span>
               </div>
-              <p className="text-xl font-mono font-semibold text-text-primary">
-                ${accountData.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              <p className={clsx(
+                'text-xl font-mono font-semibold',
+                pnl >= 0 ? 'text-text-primary' : 'text-accent-red'
+              )}>
+                ${portfolio.totalEquity.toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </p>
               <p className={clsx(
                 'text-xs font-mono mt-1',
                 pnl >= 0 ? 'text-accent-emerald' : 'text-accent-red'
               )}>
-                {pnl >= 0 ? '+' : ''}{pnl.toLocaleString('en-US', { minimumFractionDigits: 2 })} ({pnlPercent.toFixed(2)}%)
+                {pnl >= 0 ? '+' : '-'}${Math.abs(pnl).toLocaleString('en-US', { minimumFractionDigits: 2 })} ({pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%)
               </p>
             </div>
 
@@ -174,26 +259,29 @@ export function Sidebar({ accountData, isConnected }: SidebarProps) {
             <div className="grid grid-cols-2 gap-2">
               <div className="glass-card p-3">
                 <span className="text-label block mb-1">Win Rate</span>
-                <p className="text-sm font-mono font-semibold text-text-primary">
+                <p className={clsx(
+                  'text-sm font-mono font-semibold',
+                  winRate >= 50 ? 'text-accent-emerald' : 'text-text-primary'
+                )}>
                   {winRate.toFixed(1)}%
                 </p>
               </div>
               <div className="glass-card p-3">
                 <span className="text-label block mb-1">Trades</span>
                 <p className="text-sm font-mono font-semibold text-text-primary">
-                  {accountData.totalTrades}
+                  {portfolio.totalTrades}
                 </p>
               </div>
               <div className="glass-card p-3">
                 <span className="text-label block mb-1">Fees</span>
                 <p className="text-sm font-mono font-semibold text-accent-amber">
-                  ${accountData.totalFees.toFixed(2)}
+                  ${portfolio.totalFees.toFixed(2)}
                 </p>
               </div>
               <div className="glass-card p-3">
                 <span className="text-label block mb-1">Slippage</span>
                 <p className="text-sm font-mono font-semibold text-accent-amber">
-                  ${accountData.slippageCost.toFixed(2)}
+                  ${(portfolio.totalSpread + portfolio.totalSlippage).toFixed(2)}
                 </p>
               </div>
             </div>

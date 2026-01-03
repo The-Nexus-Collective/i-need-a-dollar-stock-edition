@@ -19,18 +19,26 @@ import { clsx } from 'clsx'
 import { Sidebar } from '@/components/Sidebar'
 import { api } from '@/lib/api'
 import { useWebSocket } from '@/lib/websocket'
+import { usePortfolio } from '@/lib/usePortfolio'
 
 interface Trade {
   id: string
-  coin: string
-  side: string
-  order_type: string
+  position_id: string
+  symbol: string
+  direction: string
+  entry_price: number
+  exit_price: number
   quantity: number
-  price: number
-  fee: number
-  status: string
-  is_paper: boolean
-  executed_at: string
+  size_usdt: number
+  leverage: number
+  pnl_usdt: number
+  pnl_percent: number
+  entry_time: string
+  exit_time: string
+  duration_seconds: number
+  exit_reason: string
+  conviction: number
+  reasoning: string | null
   created_at: string
 }
 
@@ -48,9 +56,16 @@ function formatCurrency(value: number, showSign = false): string {
 }
 
 function TradeRow({ trade, index }: { trade: Trade; index: number }) {
-  const isBuy = trade.side.toLowerCase() === 'buy'
-  const total = trade.quantity * trade.price
-  const totalWithFee = total + trade.fee
+  const isLong = trade.direction.toUpperCase() === 'LONG'
+  const isProfitable = trade.pnl_usdt >= 0
+  const coin = trade.symbol?.replace('USDT', '') || 'UNKNOWN'
+  
+  // Format duration
+  const formatDuration = (seconds: number) => {
+    if (seconds < 60) return `${seconds}s`
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+    return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`
+  }
 
   return (
     <motion.tr
@@ -65,10 +80,10 @@ function TradeRow({ trade, index }: { trade: Trade; index: number }) {
           <Clock className="w-4 h-4 text-text-dim" />
           <div>
             <span className="text-sm text-text-primary font-mono">
-              {new Date(trade.executed_at || trade.created_at).toLocaleTimeString()}
+              {new Date(trade.exit_time || trade.created_at).toLocaleTimeString()}
             </span>
             <p className="text-xs text-text-muted">
-              {new Date(trade.executed_at || trade.created_at).toLocaleDateString()}
+              {new Date(trade.exit_time || trade.created_at).toLocaleDateString()}
             </p>
           </div>
         </div>
@@ -76,65 +91,57 @@ function TradeRow({ trade, index }: { trade: Trade; index: number }) {
 
       {/* Coin */}
       <td className="py-4 px-4">
-        <span className="font-semibold text-text-primary">{trade.coin}</span>
+        <span className="font-semibold text-text-primary">{coin}</span>
+        <p className="text-xs text-text-muted">{trade.leverage}x leverage</p>
       </td>
 
-      {/* Side */}
+      {/* Direction */}
       <td className="py-4 px-4">
         <span className={clsx(
           'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium',
-          isBuy ? 'bg-accent-emerald/20 text-accent-emerald' : 'bg-accent-red/20 text-accent-red'
+          isLong ? 'bg-accent-emerald/20 text-accent-emerald' : 'bg-accent-red/20 text-accent-red'
         )}>
-          {isBuy ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-          {trade.side.toUpperCase()}
+          {isLong ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+          {trade.direction.toUpperCase()}
         </span>
       </td>
 
-      {/* Type */}
-      <td className="py-4 px-4">
-        <span className="text-sm text-text-secondary capitalize">
-          {trade.order_type || 'market'}
-        </span>
+      {/* Entry Price */}
+      <td className="py-4 px-4 text-right">
+        <span className="font-mono text-text-primary">{formatCurrency(trade.entry_price)}</span>
       </td>
 
-      {/* Quantity */}
+      {/* Exit Price */}
       <td className="py-4 px-4 text-right">
-        <span className="font-mono text-text-primary">{trade.quantity.toFixed(6)}</span>
+        <span className="font-mono text-text-primary">{formatCurrency(trade.exit_price)}</span>
       </td>
 
-      {/* Price */}
+      {/* Size */}
       <td className="py-4 px-4 text-right">
-        <span className="font-mono text-text-primary">{formatCurrency(trade.price)}</span>
+        <span className="font-mono text-text-primary">{formatCurrency(trade.size_usdt)}</span>
+        <p className="text-xs text-text-muted">{trade.quantity.toFixed(4)} qty</p>
       </td>
 
-      {/* Fee */}
+      {/* PnL */}
       <td className="py-4 px-4 text-right">
-        <span className="font-mono text-accent-amber">{formatCurrency(trade.fee)}</span>
-      </td>
-
-      {/* Total */}
-      <td className="py-4 px-4 text-right">
-        <div className="font-mono text-text-primary">{formatCurrency(total)}</div>
-        <p className="text-xs text-text-muted">+{formatCurrency(trade.fee)} fee</p>
-      </td>
-
-      {/* Status */}
-      <td className="py-4 px-4 text-right">
-        <span className={clsx(
-          'px-2 py-1 rounded-full text-xs font-medium',
-          trade.status === 'filled' || trade.status === 'executed'
-            ? 'bg-accent-emerald/20 text-accent-emerald'
-            : trade.status === 'pending'
-              ? 'bg-accent-amber/20 text-accent-amber'
-              : 'bg-text-dim/20 text-text-muted'
+        <div className={clsx(
+          'font-mono font-semibold',
+          isProfitable ? 'text-accent-emerald' : 'text-accent-red'
         )}>
-          {trade.status.toUpperCase()}
-        </span>
-        {trade.is_paper && (
-          <span className="ml-2 px-2 py-1 rounded-full text-xs bg-accent-cyan/20 text-accent-cyan">
-            PAPER
-          </span>
-        )}
+          {formatCurrency(trade.pnl_usdt, true)}
+        </div>
+        <p className={clsx(
+          'text-xs',
+          isProfitable ? 'text-accent-emerald' : 'text-accent-red'
+        )}>
+          {isProfitable ? '+' : ''}{trade.pnl_percent.toFixed(2)}%
+        </p>
+      </td>
+
+      {/* Duration */}
+      <td className="py-4 px-4 text-right">
+        <span className="font-mono text-text-secondary">{formatDuration(trade.duration_seconds)}</span>
+        <p className="text-xs text-text-muted capitalize">{trade.exit_reason}</p>
       </td>
     </motion.tr>
   )
@@ -144,20 +151,14 @@ export default function HistoryPage() {
   const [trades, setTrades] = useState<Trade[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
-  const [sortField, setSortField] = useState<'time' | 'coin' | 'quantity' | 'price'>('time')
+  const [sortField, setSortField] = useState<'time' | 'coin' | 'pnl' | 'size'>('time')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [page, setPage] = useState(1)
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all')
   const pageSize = 20
-  const [accountData, setAccountData] = useState({
-    balance: 108000,
-    initialBalance: 108000,
-    totalFees: 0,
-    slippageCost: 0,
-    totalTrades: 0,
-    winningTrades: 0,
-    mode: 'paper' as const,
-  })
+  
+  // Get portfolio stats from backend
+  const { portfolio } = usePortfolio()
 
   const { isConnected } = useWebSocket({
     channel: 'trading',
@@ -188,15 +189,16 @@ export default function HistoryPage() {
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
-      if (!trade.coin.toLowerCase().includes(query) && 
-          !trade.side.toLowerCase().includes(query)) {
+      const coin = trade.symbol?.replace('USDT', '').toLowerCase() || ''
+      const direction = trade.direction?.toLowerCase() || ''
+      if (!coin.includes(query) && !direction.includes(query)) {
         return false
       }
     }
 
     // Date filter
     if (dateFilter !== 'all') {
-      const tradeDate = new Date(trade.executed_at || trade.created_at)
+      const tradeDate = new Date(trade.exit_time || trade.created_at)
       const now = new Date()
       
       if (dateFilter === 'today') {
@@ -217,19 +219,21 @@ export default function HistoryPage() {
   // Sort trades
   const sortedTrades = [...filteredTrades].sort((a, b) => {
     let comparison = 0
+    const coinA = a.symbol?.replace('USDT', '') || ''
+    const coinB = b.symbol?.replace('USDT', '') || ''
     switch (sortField) {
       case 'time':
-        comparison = new Date(a.executed_at || a.created_at).getTime() - 
-                     new Date(b.executed_at || b.created_at).getTime()
+        comparison = new Date(a.exit_time || a.created_at).getTime() - 
+                     new Date(b.exit_time || b.created_at).getTime()
         break
       case 'coin':
-        comparison = a.coin.localeCompare(b.coin)
+        comparison = coinA.localeCompare(coinB)
         break
-      case 'quantity':
-        comparison = a.quantity - b.quantity
+      case 'pnl':
+        comparison = (a.pnl_usdt || 0) - (b.pnl_usdt || 0)
         break
-      case 'price':
-        comparison = a.price - b.price
+      case 'size':
+        comparison = (a.size_usdt || 0) - (b.size_usdt || 0)
         break
     }
     return sortDirection === 'asc' ? comparison : -comparison
@@ -239,11 +243,16 @@ export default function HistoryPage() {
   const totalPages = Math.ceil(sortedTrades.length / pageSize)
   const paginatedTrades = sortedTrades.slice((page - 1) * pageSize, page * pageSize)
 
-  // Calculate summary
-  const totalVolume = trades.reduce((sum, t) => sum + (t.quantity * t.price), 0)
-  const totalFees = trades.reduce((sum, t) => sum + t.fee, 0)
-  const buyTrades = trades.filter(t => t.side.toLowerCase() === 'buy').length
-  const sellTrades = trades.filter(t => t.side.toLowerCase() === 'sell').length
+  // Use portfolio stats from backend (calculated from ALL trades, not just visible ones)
+  const totalPnL = portfolio.totalPnl
+  const winRate = portfolio.winRate
+  const winningTrades = portfolio.winningTrades
+  const totalTrades = portfolio.totalTrades
+  const totalVolume = portfolio.totalVolume
+  
+  // Calculate long/short breakdown from visible trades for display
+  const longTrades = trades.filter(t => t.direction?.toUpperCase() === 'LONG').length
+  const shortTrades = trades.filter(t => t.direction?.toUpperCase() === 'SHORT').length
 
   const handleSort = (field: typeof sortField) => {
     if (sortField === field) {
@@ -256,7 +265,7 @@ export default function HistoryPage() {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar accountData={accountData} isConnected={isConnected} />
+      <Sidebar isConnected={isConnected} />
 
       <main className="flex-1 ml-[280px] p-6 lg:p-8">
         {/* Header */}
@@ -296,10 +305,10 @@ export default function HistoryPage() {
           >
             <span className="text-label block mb-2">Total Trades</span>
             <div className="text-2xl font-mono font-semibold text-text-primary">
-              {trades.length}
+              {totalTrades}
             </div>
             <p className="text-xs text-text-muted mt-1">
-              {buyTrades} buys · {sellTrades} sells
+              {longTrades} longs · {shortTrades} shorts (visible)
             </p>
           </motion.div>
 
@@ -309,9 +318,12 @@ export default function HistoryPage() {
             transition={{ delay: 0.1 }}
             className="glass-card p-5"
           >
-            <span className="text-label block mb-2">Total Volume</span>
-            <div className="text-2xl font-mono font-semibold text-text-primary">
-              {formatCurrency(totalVolume)}
+            <span className="text-label block mb-2">Total PnL</span>
+            <div className={clsx(
+              'text-2xl font-mono font-semibold',
+              totalPnL >= 0 ? 'text-accent-emerald' : 'text-accent-red'
+            )}>
+              {formatCurrency(totalPnL, true)}
             </div>
           </motion.div>
 
@@ -321,10 +333,16 @@ export default function HistoryPage() {
             transition={{ delay: 0.2 }}
             className="glass-card p-5"
           >
-            <span className="text-label block mb-2">Total Fees</span>
-            <div className="text-2xl font-mono font-semibold text-accent-amber">
-              {formatCurrency(totalFees)}
+            <span className="text-label block mb-2">Win Rate</span>
+            <div className={clsx(
+              'text-2xl font-mono font-semibold',
+              winRate >= 50 ? 'text-accent-emerald' : 'text-accent-amber'
+            )}>
+              {winRate.toFixed(1)}%
             </div>
+            <p className="text-xs text-text-muted mt-1">
+              {winningTrades} / {totalTrades} winning
+            </p>
           </motion.div>
 
           <motion.div
@@ -333,9 +351,9 @@ export default function HistoryPage() {
             transition={{ delay: 0.3 }}
             className="glass-card p-5"
           >
-            <span className="text-label block mb-2">Avg Trade Size</span>
+            <span className="text-label block mb-2">Total Volume</span>
             <div className="text-2xl font-mono font-semibold text-text-primary">
-              {trades.length > 0 ? formatCurrency(totalVolume / trades.length) : '$0.00'}
+              {formatCurrency(totalVolume)}
             </div>
           </motion.div>
         </div>
@@ -395,7 +413,7 @@ export default function HistoryPage() {
                         onClick={() => handleSort('time')}
                       >
                         <div className="flex items-center gap-1">
-                          Time
+                          Exit Time
                           <ArrowUpDown className="w-3 h-3" />
                         </div>
                       </th>
@@ -409,37 +427,22 @@ export default function HistoryPage() {
                         </div>
                       </th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                        Side
-                      </th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                        Type
-                      </th>
-                      <th 
-                        className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider cursor-pointer hover:text-text-secondary"
-                        onClick={() => handleSort('quantity')}
-                      >
-                        <div className="flex items-center justify-end gap-1">
-                          Quantity
-                          <ArrowUpDown className="w-3 h-3" />
-                        </div>
-                      </th>
-                      <th 
-                        className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider cursor-pointer hover:text-text-secondary"
-                        onClick={() => handleSort('price')}
-                      >
-                        <div className="flex items-center justify-end gap-1">
-                          Price
-                          <ArrowUpDown className="w-3 h-3" />
-                        </div>
+                        Direction
                       </th>
                       <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                        Fee
+                        Entry
                       </th>
                       <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                        Total
+                        Exit
                       </th>
                       <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                        Status
+                        Size
+                      </th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
+                        PnL
+                      </th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
+                        Duration
                       </th>
                     </tr>
                   </thead>

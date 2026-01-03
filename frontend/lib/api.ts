@@ -100,18 +100,21 @@ class ApiClient {
   async getPositions(status = 'open') {
     return this.fetch<Array<{
       id: string
-      coin: string
-      side: string
+      symbol: string
+      direction: string
       quantity: number
       entry_price: number
-      current_price: number
-      unrealized_pnl: number
-      realized_pnl: number
-      stop_loss: number
-      take_profit: number
+      size_usdt: number
+      leverage: number
+      stop_loss_price: number | null
+      take_profit_price: number | null
       status: string
-      opened_at: string
-      closed_at: string | null
+      entry_time: string
+      exit_time: string | null
+      exit_price: number | null
+      realized_pnl: number
+      conviction: number
+      reasoning: string | null
     }>>(`/api/positions?status=${status}`)
   }
 
@@ -184,6 +187,34 @@ class ApiClient {
     return this.fetch<{ status: string; event_id: string }>(`/api/risk/acknowledge/${eventId}`, {
       method: 'POST',
     })
+  }
+
+  async getMarginHealth() {
+    return this.fetch<{
+      overall_status: 'safe' | 'warning' | 'danger' | 'critical'
+      summary: {
+        total_positions: number
+        positions_safe: number
+        positions_warning: number
+        positions_danger: number
+        total_margin_used: number
+        margin_utilization_pct: number
+        closest_to_liq_pct: number | null
+      }
+      positions: Array<{
+        coin: string
+        side: string
+        leverage: number
+        entry_price: number
+        current_price: number
+        liquidation_price: number
+        distance_to_liq_pct: number
+        price_change_pct: number
+        margin_used: number
+        status: 'safe' | 'warning' | 'danger' | 'liquidated'
+      }>
+      error?: string
+    }>('/api/risk/margin-health')
   }
 
   // Audit
@@ -425,6 +456,251 @@ class ApiClient {
         engagement: number
       }>
     }>>(`/api/stocks/hype?symbols=${encodeURIComponent(symbols)}`)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SWARM ENDPOINTS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async getSwarmStatus() {
+    return this.fetch<{
+      running: boolean
+      started_at: string | null
+      agent_count: number
+      agents: Array<{
+        id: string
+        name: string
+        emoji: string
+        role: string
+        running: boolean
+        energy: number
+        beliefs_count: number
+        hypotheses_count: number
+        last_perception: string | null
+        pending_signals: number
+      }>
+      signal_network: {
+        active_agents: number
+        recent_signals: number
+      }
+      memory: {
+        cached_memories: number
+      }
+    }>('/ws/swarm/status')
+  }
+
+  async getAgentLogs(params: {
+    limit?: number
+    agent_name?: string
+    action_type?: string
+  } = {}) {
+    const searchParams = new URLSearchParams()
+    if (params.limit) searchParams.set('limit', params.limit.toString())
+    if (params.agent_name) searchParams.set('agent_name', params.agent_name)
+    if (params.action_type) searchParams.set('action_type', params.action_type)
+    
+    return this.fetch<Array<{
+      id: string
+      timestamp: string
+      cycle_id: string
+      agent_name: string
+      action_type: string
+      reasoning: string
+      decision: string
+      confidence: number | null
+      duration_ms: number
+      tokens_used: number
+      persona: {
+        name: string
+        emoji: string
+        role: string
+        personality: string
+      }
+      narrative: string
+    }>>(`/api/agents/logs?${searchParams}`)
+  }
+
+  async getAgentCycles(limit: number = 20) {
+    return this.fetch<Array<{
+      cycle_id: string
+      start_time: string
+      end_time: string
+      log_count: number
+      agents_involved: number
+      total_tokens: number
+      avg_confidence: number | null
+    }>>(`/api/agents/cycles?limit=${limit}`)
+  }
+
+  async getUniverse(status: string = 'approved', limit: number = 100) {
+    return this.fetch<Array<{
+      coin: string
+      name: string
+      volume_24h: number
+      market_cap: number
+      price_usd: number
+      price_change_24h: number
+      hype_score: number
+      sentiment_score: number
+      narrative_strength: number
+      discovery_source: string
+      discovered_at: string | null
+    }>>(`/api/universe?status=${status}&limit=${limit}`)
+  }
+
+  async getUniverseStats() {
+    return this.fetch<{
+      approved_count: number
+      pending_count: number
+      rejected_count: number
+      coingecko_count: number
+      x_discovery_count: number
+      total_volume: number
+      avg_hype_score: number
+    }>('/api/universe/stats')
+  }
+
+  async getStrategies() {
+    return this.fetch<Array<{
+      strategy: string
+      weight: number
+      win_rate_24h: number | null
+      pnl_24h: number
+      trades_24h: number
+      affinity: {
+        low_vol: number
+        normal: number
+        high_vol: number
+      }
+    }>>('/api/strategies')
+  }
+
+  async getMemories(params: {
+    memory_type?: string
+    category?: string
+    limit?: number
+  } = {}) {
+    const searchParams = new URLSearchParams()
+    if (params.memory_type) searchParams.set('memory_type', params.memory_type)
+    if (params.category) searchParams.set('category', params.category)
+    if (params.limit) searchParams.set('limit', params.limit.toString())
+    
+    return this.fetch<Array<{
+      id: string
+      title: string
+      content: string
+      category: string
+      memory_type: string
+      importance: number
+      recall_count: number
+      created_at: string
+      coins: string[]
+    }>>(`/api/memories?${searchParams}`)
+  }
+
+  async getXDiscoveries(processed?: boolean, limit: number = 50) {
+    const searchParams = new URLSearchParams()
+    if (processed !== undefined) searchParams.set('processed', processed.toString())
+    searchParams.set('limit', limit.toString())
+    
+    return this.fetch<Array<{
+      id: string
+      coin: string
+      tweet_id: string
+      tweet_text: string
+      author: string
+      engagement: {
+        likes: number
+        retweets: number
+        score: number
+      }
+      narrative: string
+      sentiment: number | null
+      discovered_at: string
+      processed: boolean
+      added_to_universe: boolean
+    }>>(`/api/x/discoveries?${searchParams}`)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SIMPLE PREDICTION TRADER ENDPOINTS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async getTraderStatus() {
+    return this.fetch<{
+      running: boolean
+      cycle_count: number
+      executor: {
+        capital: number
+        starting_capital: number
+        total_pnl: number
+        total_pnl_pct: number
+        open_positions: number
+        total_cycles: number
+        total_trades: number
+        positions: Array<{
+          position_id: string
+          symbol: string
+          direction: string
+          entry_price: number
+          quantity: number
+          size_usdt: number
+          leverage: number
+          conviction: number
+          opened_at: string
+        }>
+      }
+      top_coins_count: number
+      cycle_interval_seconds: number
+      mode: string
+    }>('/api/trader/status')
+  }
+
+  async getPredictions(limit: number = 100) {
+    return this.fetch<Array<{
+      id: string
+      cycle_id: string
+      cycle_number: number
+      coin: string
+      direction: string
+      conviction: number
+      leverage: number
+      reason: string
+      created_at: string
+    }>>(`/api/trader/predictions?limit=${limit}`)
+  }
+
+  async getPredictionCycles(limit: number = 50) {
+    return this.fetch<Array<{
+      id: string
+      cycle_number: number
+      started_at: string
+      completed_at: string | null
+      capital_before: number
+      capital_after: number
+      total_pnl: number
+      coins_traded: string[]
+      status: string
+      prediction_count: number
+      avg_conviction: number
+    }>>(`/api/trader/cycles?limit=${limit}`)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PAPER TRADE RESET
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async resetPaperTrades() {
+    return this.fetch<{
+      status: string
+      message: string
+      deleted_counts: Record<string, number>
+      total_deleted: number
+      initial_capital: number
+      timestamp: string
+    }>('/api/paper-trades/reset', {
+      method: 'DELETE',
+    })
   }
 }
 

@@ -16,6 +16,7 @@ Harmonic with crypto strategy:
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -202,12 +203,18 @@ class StockStrategy:
             asset_type="stock"
         )
         
+        # Check if we should reverse signals (contrarian mode)
+        reverse_signals = os.getenv("REVERSE_SIGNALS", "").lower() == "true"
+        
         sentiments = []
         if result.success and result.sentiments:
             for symbol, sentiment in result.sentiments.items():
+                # Reverse signal if configured (contrarian mode)
+                score = -sentiment.score if reverse_signals else sentiment.score
+                
                 sentiments.append(StockSentiment(
                     symbol=symbol,
-                    score=sentiment.score,
+                    score=score,
                     narrative=sentiment.narrative,
                     driver=sentiment.driver,
                 ))
