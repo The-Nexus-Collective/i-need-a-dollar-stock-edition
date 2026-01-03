@@ -1,11 +1,9 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Production Trading Platform - Database Initialization
+-- Compatible with Digital Ocean Managed PostgreSQL (no TimescaleDB)
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- Enable TimescaleDB extension
-CREATE EXTENSION IF NOT EXISTS timescaledb;
-
--- Enable UUID extension
+-- Enable UUID extension (available on DO managed PostgreSQL)
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -13,7 +11,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ═══════════════════════════════════════════════════════════════════════════
 
 CREATE TABLE IF NOT EXISTS audit_log (
-    id BIGSERIAL,
+    id BIGSERIAL PRIMARY KEY,
     timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     event_type VARCHAR(50) NOT NULL,
     actor VARCHAR(100) NOT NULL,
@@ -27,17 +25,14 @@ CREATE TABLE IF NOT EXISTS audit_log (
     prev_hash VARCHAR(64),
     hash VARCHAR(64) NOT NULL,
     
-    PRIMARY KEY (id, timestamp),
     CONSTRAINT audit_log_immutable CHECK (TRUE)
 );
-
--- Convert to hypertable for time-series optimization
-SELECT create_hypertable('audit_log', 'timestamp', if_not_exists => TRUE, migrate_data => TRUE);
 
 -- Index for fast lookups
 CREATE INDEX IF NOT EXISTS idx_audit_event_type ON audit_log (event_type);
 CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log (entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_log (actor);
+CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log (timestamp DESC);
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- POSITIONS
@@ -78,6 +73,7 @@ CREATE TABLE IF NOT EXISTS trades (
     order_type VARCHAR(20) NOT NULL CHECK (order_type IN ('market', 'limit', 'stop', 'take_profit')),
     quantity DECIMAL(20, 8) NOT NULL,
     price DECIMAL(20, 8) NOT NULL,
+    pnl DECIMAL(20, 8) DEFAULT 0,
     fee DECIMAL(20, 8) DEFAULT 0,
     fee_currency VARCHAR(10),
     status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'submitted', 'filled', 'partial', 'cancelled', 'rejected')),
@@ -86,10 +82,9 @@ CREATE TABLE IF NOT EXISTS trades (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Note: Not using hypertable for trades since UUID primary key is needed for foreign key references
-
 CREATE INDEX IF NOT EXISTS idx_trades_position ON trades (position_id);
 CREATE INDEX IF NOT EXISTS idx_trades_status ON trades (status);
+CREATE INDEX IF NOT EXISTS idx_trades_executed_at ON trades (executed_at DESC);
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- SIGNALS (AI-Generated Trading Signals)
@@ -112,8 +107,7 @@ CREATE TABLE IF NOT EXISTS signals (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Note: Not using hypertable for signals since UUID primary key is needed
-CREATE INDEX IF NOT EXISTS idx_signals_timestamp ON signals (timestamp);
+CREATE INDEX IF NOT EXISTS idx_signals_timestamp ON signals (timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_signals_coin ON signals (coin);
 CREATE INDEX IF NOT EXISTS idx_signals_executed ON signals (executed);
 
@@ -122,7 +116,7 @@ CREATE INDEX IF NOT EXISTS idx_signals_executed ON signals (executed);
 -- ═══════════════════════════════════════════════════════════════════════════
 
 CREATE TABLE IF NOT EXISTS portfolio_snapshots (
-    timestamp TIMESTAMPTZ NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL PRIMARY KEY,
     total_equity DECIMAL(20, 8) NOT NULL,
     cash DECIMAL(20, 8) NOT NULL,
     positions_value DECIMAL(20, 8) NOT NULL,
@@ -135,12 +129,10 @@ CREATE TABLE IF NOT EXISTS portfolio_snapshots (
     win_rate DECIMAL(5, 2),
     total_trades INTEGER DEFAULT 0,
     winning_trades INTEGER DEFAULT 0,
-    losing_trades INTEGER DEFAULT 0,
-    PRIMARY KEY (timestamp)
+    losing_trades INTEGER DEFAULT 0
 );
 
--- Convert to hypertable
-SELECT create_hypertable('portfolio_snapshots', 'timestamp', if_not_exists => TRUE);
+CREATE INDEX IF NOT EXISTS idx_portfolio_snapshots_ts ON portfolio_snapshots (timestamp DESC);
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- RISK EVENTS
@@ -161,8 +153,7 @@ CREATE TABLE IF NOT EXISTS risk_events (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Note: Not using hypertable for risk_events since UUID primary key is needed
-CREATE INDEX IF NOT EXISTS idx_risk_events_timestamp ON risk_events (timestamp);
+CREATE INDEX IF NOT EXISTS idx_risk_events_timestamp ON risk_events (timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_risk_events_type ON risk_events (event_type);
 CREATE INDEX IF NOT EXISTS idx_risk_events_severity ON risk_events (severity);
 
@@ -181,8 +172,7 @@ CREATE TABLE IF NOT EXISTS market_data (
     PRIMARY KEY (timestamp, coin)
 );
 
--- Convert to hypertable
-SELECT create_hypertable('market_data', 'timestamp', if_not_exists => TRUE);
+CREATE INDEX IF NOT EXISTS idx_market_data_coin ON market_data (coin, timestamp DESC);
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- SYSTEM CONFIG
@@ -198,12 +188,12 @@ CREATE TABLE IF NOT EXISTS system_config (
 
 -- Insert default risk parameters
 INSERT INTO system_config (key, value, description) VALUES
-    ('risk.position_limit_per_asset', '0.10', 'Max portfolio % in single asset'),
-    ('risk.position_limit_altcoins', '0.30', 'Max portfolio % in altcoins'),
-    ('risk.max_deployed', '0.80', 'Max portfolio % deployed'),
-    ('risk.drawdown_level_1', '0.05', 'Level 1 circuit breaker threshold'),
-    ('risk.drawdown_level_2', '0.10', 'Level 2 circuit breaker threshold'),
-    ('risk.drawdown_level_3', '0.15', 'Level 3 circuit breaker threshold'),
+    ('risk.position_limit_per_asset', '0.20', 'Max portfolio % in single asset'),
+    ('risk.position_limit_altcoins', '0.50', 'Max portfolio % in altcoins'),
+    ('risk.max_deployed', '0.90', 'Max portfolio % deployed'),
+    ('risk.drawdown_level_1', '0.04', 'Level 1 circuit breaker threshold'),
+    ('risk.drawdown_level_2', '0.08', 'Level 2 circuit breaker threshold'),
+    ('risk.drawdown_level_3', '0.12', 'Level 3 circuit breaker threshold'),
     ('risk.var_limit', '0.03', 'Max VaR as % of portfolio'),
     ('trading.stop_loss_atr', '1.5', 'Stop loss as ATR multiple'),
     ('trading.take_profit_atr', '4.0', 'Take profit as ATR multiple'),
@@ -211,22 +201,30 @@ INSERT INTO system_config (key, value, description) VALUES
 ON CONFLICT (key) DO NOTHING;
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- FUNCTIONS
+-- TRADING DECISIONS (Audit Trail)
 -- ═══════════════════════════════════════════════════════════════════════════
 
--- Function to update timestamps
-CREATE OR REPLACE FUNCTION update_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+CREATE TABLE IF NOT EXISTS trading_decisions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    coin VARCHAR(10) NOT NULL,
+    decision VARCHAR(20) NOT NULL,
+    score DECIMAL(8, 2),
+    sentiment DECIMAL(8, 2),
+    narrative DECIMAL(8, 2),
+    market_regime VARCHAR(20),
+    filters_passed JSONB,
+    filter_reason TEXT,
+    price_at_decision DECIMAL(20, 8),
+    atr_value DECIMAL(20, 8),
+    volume_ratio DECIMAL(8, 4),
+    position_opened BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
--- Apply to positions
-CREATE TRIGGER positions_updated_at
-    BEFORE UPDATE ON positions
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE INDEX IF NOT EXISTS idx_decisions_timestamp ON trading_decisions (timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_decisions_coin ON trading_decisions (coin);
+CREATE INDEX IF NOT EXISTS idx_decisions_decision ON trading_decisions (decision);
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- VIEWS
@@ -255,6 +253,3 @@ SELECT
     END as pnl_percent
 FROM positions p
 WHERE p.status = 'open';
-
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO trading_user;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO trading_user;
