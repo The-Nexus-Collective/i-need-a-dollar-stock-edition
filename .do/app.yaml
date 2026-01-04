@@ -16,20 +16,12 @@ name: i-need-a-dollar
 region: fra  # Frankfurt - change to your preferred region (nyc, sfo, ams, sgp, etc.)
 
 # ─── GLOBAL ENVIRONMENT VARIABLES ──────────────────────────────────────────────
-# AGGRESSIVE MODE CONFIGURATION
+# SECRETS (XAI_API_KEY, JWT_SECRET, REDIS_URL) are managed in DO Console - DO NOT add here!
+# Adding secrets without values will overwrite existing secrets with empty values.
 envs:
   - key: MODE
     value: "paper"
     scope: RUN_AND_BUILD_TIME
-  - key: XAI_API_KEY
-    scope: RUN_AND_BUILD_TIME
-    type: SECRET
-  - key: JWT_SECRET
-    scope: RUN_AND_BUILD_TIME
-    type: SECRET
-  - key: REDIS_URL
-    scope: RUN_TIME
-    type: SECRET
   # Trading configuration
   - key: CYCLE_INTERVAL
     value: "720"
