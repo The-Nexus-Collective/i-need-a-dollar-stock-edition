@@ -10,6 +10,14 @@
 name: i-need-a-dollar-crypto-edition
 region: fra
 
+# ─── GLOBAL ENVIRONMENT VARIABLES ─────────────────────────────────────────────
+# These are inherited by ALL services
+envs:
+  # XAI/Grok API Key - Must be set via: doctl apps update <app-id> --env XAI_API_KEY=<your-key>
+  - key: XAI_API_KEY
+    scope: RUN_TIME
+    type: SECRET
+
 # ─── SERVICES ─────────────────────────────────────────────────────────────────
 
 services:
