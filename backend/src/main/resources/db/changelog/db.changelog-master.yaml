@@ -1,0 +1,30 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-init-schema
+      author: trading-platform
+      changes:
+        - sqlFile:
+            path: 001-init-schema.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: false
+
+  - changeSet:
+      id: 002-accounting-ledger
+      author: trading-platform
+      changes:
+        - sqlFile:
+            path: 002-accounting-ledger.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: false
+
+  - changeSet:
+      id: 003-logbook-entry
+      author: trading-platform
+      changes:
+        - sqlFile:
+            path: 003-logbook-entry.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: false

@@ -224,7 +224,9 @@ function MarginPositionCard({ position }: { position: MarginPosition }) {
         </div>
         <div className="p-2 rounded bg-void/30">
           <span className="text-text-dim block mb-0.5">Liquidation</span>
-          <span className="font-mono text-accent-red">${position.liquidation_price.toLocaleString()}</span>
+          <span className="font-mono text-accent-red">
+            {position.liquidation_price ? `$${position.liquidation_price.toLocaleString()}` : '-'}
+          </span>
         </div>
       </div>
     </motion.div>
@@ -391,6 +393,177 @@ function MarginHealthSection({ marginHealth, loading }: { marginHealth: MarginHe
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// MARGIN CALL HISTORY SECTION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function MarginCallHistorySection({ 
+  events, 
+  loading, 
+  onAcknowledge 
+}: { 
+  events: RiskEvent[]; 
+  loading: boolean; 
+  onAcknowledge: (id: string) => void 
+}) {
+  // Filter for margin call and margin warning events
+  const marginEvents = events.filter(e => 
+    e.event_type === 'MARGIN_CALL' || e.event_type === 'MARGIN_WARNING'
+  )
+  
+  const marginCallCount = marginEvents.filter(e => e.event_type === 'MARGIN_CALL').length
+  
+  if (loading) {
+    return null
+  }
+  
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="mt-8"
+    >
+      <div className="flex items-center gap-2 mb-4">
+        <AlertTriangle className="w-5 h-5 text-accent-red" />
+        <h2 className="text-lg font-semibold text-text-primary">Margin Call History</h2>
+        {marginCallCount > 0 && (
+          <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-accent-red/20 text-accent-red border border-accent-red/30">
+            {marginCallCount} liquidated
+          </span>
+        )}
+      </div>
+      
+      {marginEvents.length === 0 ? (
+        <div className="glass-card p-6 text-center">
+          <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-accent-emerald/10 flex items-center justify-center">
+            <Shield className="w-6 h-6 text-accent-emerald" />
+          </div>
+          <p className="text-text-secondary">No margin calls</p>
+          <p className="text-text-dim text-sm mt-1">All positions are within safe margin levels</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {marginEvents.map((event, idx) => (
+            <motion.div
+              key={event.id}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: idx * 0.05 }}
+            >
+              <MarginCallCard event={event} onAcknowledge={onAcknowledge} />
+            </motion.div>
+          ))}
+        </div>
+      )}
+    </motion.div>
+  )
+}
+
+function MarginCallCard({ event, onAcknowledge }: { event: RiskEvent; onAcknowledge: (id: string) => void }) {
+  const isMarginCall = event.event_type === 'MARGIN_CALL'
+  const details = event.details || {}
+  
+  const symbol = details.symbol || 'Unknown'
+  const direction = details.direction || ''
+  const entryPrice = details.entryPrice || 0
+  const exitPrice = details.exitPrice || event.trigger_value || 0
+  const lossAmount = details.lossAmount || 0
+  const leverage = details.leverage || 1
+  const sizeUsdt = details.sizeUsdt || 0
+  
+  return (
+    <div className={clsx(
+      'glass-card p-4 border-l-4',
+      isMarginCall 
+        ? 'border-accent-red bg-accent-red/5' 
+        : 'border-accent-amber bg-accent-amber/5',
+      event.acknowledged && 'opacity-60'
+    )}>
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className={clsx(
+            'p-2 rounded-lg',
+            isMarginCall ? 'bg-accent-red/20' : 'bg-accent-amber/20'
+          )}>
+            <XCircle className={clsx(
+              'w-5 h-5',
+              isMarginCall ? 'text-accent-red' : 'text-accent-amber'
+            )} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-text-primary">{symbol.replace('USDT', '')}</span>
+              <span className={clsx(
+                'px-1.5 py-0.5 text-xs font-bold rounded uppercase',
+                direction.toLowerCase() === 'long' 
+                  ? 'bg-accent-emerald/20 text-accent-emerald' 
+                  : 'bg-accent-red/20 text-accent-red'
+              )}>
+                {direction}
+              </span>
+              <span className="px-1.5 py-0.5 text-xs font-mono rounded bg-accent-cyan/20 text-accent-cyan">
+                {leverage}x
+              </span>
+            </div>
+            <span className={clsx(
+              'text-xs font-semibold uppercase',
+              isMarginCall ? 'text-accent-red' : 'text-accent-amber'
+            )}>
+              {isMarginCall ? 'LIQUIDATED' : 'WARNING'}
+            </span>
+          </div>
+        </div>
+        
+        {!event.acknowledged && (
+          <button
+            onClick={() => onAcknowledge(event.id)}
+            className="btn-ghost p-1.5 text-accent-cyan hover:bg-accent-cyan/10"
+          >
+            <CheckCircle className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+      
+      {isMarginCall && (
+        <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+          <div className="p-2 rounded bg-void/30">
+            <span className="text-text-dim block mb-0.5">Entry</span>
+            <span className="font-mono text-text-primary">${Number(entryPrice).toLocaleString()}</span>
+          </div>
+          <div className="p-2 rounded bg-void/30">
+            <span className="text-text-dim block mb-0.5">Exit</span>
+            <span className="font-mono text-accent-red">${Number(exitPrice).toLocaleString()}</span>
+          </div>
+        </div>
+      )}
+      
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-text-muted">
+          {new Date(event.timestamp).toLocaleString()}
+        </span>
+        {isMarginCall && lossAmount && (
+          <span className="font-mono font-bold text-accent-red">
+            -{formatCurrency(Math.abs(Number(lossAmount)))}
+          </span>
+        )}
+      </div>
+      
+      {event.action_taken && (
+        <div className="mt-2 p-2 rounded bg-void/30">
+          <span className="text-xs text-text-dim">{event.action_taken}</span>
+        </div>
+      )}
+      
+      {event.acknowledged && (
+        <div className="mt-2 flex items-center gap-1 text-xs text-text-dim">
+          <CheckCircle className="w-3 h-3" />
+          Acknowledged
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // RISK EVENT CARD
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -503,16 +676,77 @@ export default function RiskPage() {
   const { isConnected } = useWebSocket({
     channel: 'risk',
     onMessage: (message) => {
-      if (message.event_type?.includes('risk')) {
+      if (message.event_type?.includes('risk') || message.type === 'margin_call') {
         fetchRiskEvents()
+        fetchMarginHealth()
       }
     },
   })
 
   async function fetchMarginHealth() {
     try {
-      const data = await api.getMarginHealth()
-      setMarginHealth(data)
+      // First try the Portfolio Manager status which has live positions
+      const pmStatus = await api.getPortfolioManagerStatus().catch(() => null)
+      
+      if (pmStatus && pmStatus.portfolio?.positions && pmStatus.portfolio.positions.length > 0) {
+        // Build margin health from PM positions
+        const positions = pmStatus.portfolio.positions
+        const stats = pmStatus.portfolio.statistics
+        
+        // Map positions to MarginPosition format
+        const marginPositions: MarginPosition[] = positions.map(p => {
+          const distanceToLiq = Math.abs((p.current_price - p.liquidation_price) / p.current_price) * 100
+          const status: 'safe' | 'warning' | 'danger' = 
+            distanceToLiq < 5 ? 'danger' :
+            distanceToLiq < 15 ? 'warning' : 'safe'
+          
+          return {
+            coin: p.symbol.replace('USDT', ''),
+            side: p.direction.toLowerCase(),
+            leverage: p.leverage,
+            entry_price: p.entry_price,
+            current_price: p.current_price,
+            liquidation_price: p.liquidation_price,
+            distance_to_liq_pct: distanceToLiq,
+            price_change_pct: p.unrealized_pnl_pct,
+            margin_used: p.size_usdt / p.leverage,
+            status,
+          }
+        })
+        
+        // Sort by risk (closest to liquidation first)
+        marginPositions.sort((a, b) => a.distance_to_liq_pct - b.distance_to_liq_pct)
+        
+        const positionsSafe = marginPositions.filter(p => p.status === 'safe').length
+        const positionsWarning = marginPositions.filter(p => p.status === 'warning').length
+        const positionsDanger = marginPositions.filter(p => p.status === 'danger').length
+        
+        const totalMarginUsed = marginPositions.reduce((sum, p) => sum + p.margin_used, 0)
+        const marginUtilization = (totalMarginUsed / stats.current_capital) * 100
+        const closestToLiq = marginPositions.length > 0 ? marginPositions[0].distance_to_liq_pct : null
+        
+        const overallStatus: 'safe' | 'warning' | 'danger' | 'critical' = 
+          positionsDanger > 0 ? 'danger' :
+          positionsWarning > 0 ? 'warning' : 'safe'
+        
+        setMarginHealth({
+          overall_status: overallStatus,
+          summary: {
+            total_positions: marginPositions.length,
+            positions_safe: positionsSafe,
+            positions_warning: positionsWarning,
+            positions_danger: positionsDanger,
+            total_margin_used: totalMarginUsed,
+            margin_utilization_pct: marginUtilization,
+            closest_to_liq_pct: closestToLiq,
+          },
+          positions: marginPositions,
+        })
+      } else {
+        // Fall back to the API endpoint
+        const data = await api.getMarginHealth().catch(() => null)
+        setMarginHealth(data)
+      }
     } catch (error) {
       console.error('Failed to fetch margin health:', error)
     } finally {
@@ -625,6 +859,69 @@ export default function RiskPage() {
 
         {/* Margin Health Section */}
         <MarginHealthSection marginHealth={marginHealth} loading={marginLoading} />
+        
+        {/* Margin Call History Section */}
+        <MarginCallHistorySection events={riskEvents} loading={loading} onAcknowledge={handleAcknowledge} />
+        
+        {/* Risk Events Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="mt-8"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-accent-amber" />
+              <h2 className="text-lg font-semibold text-text-primary">Risk Events</h2>
+            </div>
+            
+            {/* Filter buttons */}
+            <div className="flex gap-1 bg-void/50 p-1 rounded-lg">
+              {(['all', 'unacknowledged', 'critical', 'high'] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={clsx(
+                    'px-3 py-1.5 text-xs font-medium rounded-md transition-all',
+                    filter === f
+                      ? 'bg-accent-cyan/20 text-accent-cyan border border-accent-cyan/30'
+                      : 'text-text-muted hover:text-text-secondary'
+                  )}
+                >
+                  {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          {loading ? (
+            <div className="glass-card p-8 text-center">
+              <div className="w-6 h-6 border-2 border-accent-cyan border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+              <p className="text-text-muted text-sm">Loading risk events...</p>
+            </div>
+          ) : filteredEvents.filter(e => e.event_type !== 'MARGIN_CALL' && e.event_type !== 'MARGIN_WARNING').length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredEvents
+                .filter(e => e.event_type !== 'MARGIN_CALL' && e.event_type !== 'MARGIN_WARNING')
+                .map((event) => (
+                  <RiskEventCard 
+                    key={event.id} 
+                    event={event} 
+                    onAcknowledge={handleAcknowledge} 
+                  />
+                ))}
+            </div>
+          ) : (
+            <div className="glass-card p-8 text-center">
+              <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-accent-emerald/10 flex items-center justify-center">
+                <CheckCircle className="w-6 h-6 text-accent-emerald" />
+              </div>
+              <p className="text-text-secondary">No risk events</p>
+              <p className="text-text-dim text-sm mt-1">System is operating normally</p>
+            </div>
+          )}
+        </motion.div>
       </main>
     </div>
   )

@@ -212,7 +212,7 @@ export default function UniversePage() {
   
   // Fetch data
   useEffect(() => {
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
     async function fetchData() {
       try {
         const [universeData, statsData, discoveriesData] = await Promise.all([

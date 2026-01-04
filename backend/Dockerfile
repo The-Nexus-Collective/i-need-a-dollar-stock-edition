@@ -1,25 +1,28 @@
-FROM python:3.11-slim
+# Build stage
+FROM gradle:8.5-jdk21 AS build
+WORKDIR /app
+COPY build.gradle settings.gradle ./
+COPY gradle ./gradle
+COPY src ./src
+RUN gradle bootJar --no-daemon
 
+# Run stage
+FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Add non-root user for security
+RUN addgroup -S spring && adduser -S spring -G spring
+USER spring:spring
 
-# Copy requirements first for better caching
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy the built jar
+COPY --from=build /app/build/libs/*.jar app.jar
 
-# Copy application code
-COPY . .
+# Expose port
+EXPOSE 8080
 
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash app && chown -R app:app /app
-USER app
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=60s \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
-ENV PYTHONPATH=/app
-ENV PYTHONUNBUFFERED=1
-
-CMD ["python", "main.py"]
+# Run the application
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

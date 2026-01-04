@@ -17,6 +17,21 @@ import {
   Download,
   Brain,
   Loader2,
+  Play,
+  AlertTriangle,
+  Shield,
+  ArrowUpRight,
+  ArrowDownRight,
+  BookOpen,
+  Plus,
+  Minus,
+  X,
+  Check,
+  ChevronRight,
+  Gauge,
+  Radio,
+  Wifi,
+  WifiOff,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -27,57 +42,92 @@ import { api } from '@/lib/api'
 // TYPES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-interface Prediction {
+interface PortfolioPosition {
   id: string
-  cycle_id: string
-  cycle_number: number
-  coin: string
+  symbol: string
   direction: string
-  conviction: number
+  entry_price: number
+  current_price: number
+  quantity: number
+  size_usdt: number
   leverage: number
+  conviction: number
+  unrealized_pnl: number
+  unrealized_pnl_pct: number
+  liquidation_price: number
+  margin_risk_pct: number
+  opened_at: string
   reason: string
-  created_at: string
 }
 
-interface Cycle {
-  id: string
-  cycle_number: number
-  started_at: string
-  completed_at: string | null
-  capital_before: number
-  capital_after: number
+interface PortfolioStatistics {
+  starting_capital: number
+  current_capital: number
+  total_equity: number
+  unrealized_pnl: number
+  realized_pnl: number
   total_pnl: number
-  coins_traded: string[]
-  status: string
-  prediction_count: number
-  avg_conviction: number
+  open_positions: number
+  max_positions: number
+  available_slots: number
+  total_trades: number
+  winning_trades: number
+  losing_trades: number
+  win_rate: number
+  total_fees: number
+  total_spread: number
+  total_slippage: number
+  transactions: {
+    total: number
+    open: number
+    close: number
+    extend: number
+    reduce: number
+  }
+  deployment: {
+    total_deployed: number
+    deployment_ratio: number
+    deployment_percent: number
+    below_minimum: boolean
+    capital_to_deploy: number
+  }
 }
 
-interface TraderStatus {
+interface PortfolioManagerStatus {
   running: boolean
+  phase: string
   cycle_count: number
-  executor: {
-    capital: number
-    starting_capital: number
-    total_pnl: number
-    total_pnl_pct: number
-    open_positions: number
-    total_cycles: number
-    total_trades: number
-    positions: any[]
-    total_fees_paid?: number
-    total_spread_cost?: number
-    total_slippage_cost?: number
-    total_trading_costs?: number
-  }
-  equity?: {
-    total_equity: number
-    unrealized_pnl: number
-    cash: number
-  }
-  top_coins_count: number
   cycle_interval_seconds: number
   mode: string
+  portfolio: {
+    positions: PortfolioPosition[]
+    statistics: PortfolioStatistics
+  }
+  logbook: {
+    total_entries: number
+    total_cycles: number
+    total_tokens_used: number
+    total_positions_closed: number
+    total_positions_opened: number
+  }
+  db_restored: boolean
+}
+
+interface LogEntry {
+  id: string
+  timestamp: string
+  cycle_number: number
+  analysis_text: string
+  market_summary: string
+  positions_closed: Array<{ symbol: string; reason: string; pnl: number }>
+  positions_opened: Array<{ symbol: string; direction: string; conviction: number; leverage: number; reason: string }>
+  positions_extended?: Array<{ symbol: string; scale_percent: number; reason: string }>
+  positions_reduced?: Array<{ symbol: string; scale_percent: number; reason: string }>
+  positions_kept: string[]
+  coins_analyzed: number
+  tokens_used: number
+  total_equity: number
+  unrealized_pnl: number
 }
 
 interface EquityPoint {
@@ -87,74 +137,465 @@ interface EquityPoint {
   cash: number
 }
 
+interface LivePositionData {
+  symbol: string
+  direction: string
+  size_usdt: number
+  unrealized_pnl: number
+  unrealized_pnl_pct: number
+  entry_price: number
+  current_price: number
+  leverage: number
+}
+
+interface LiveEquityData {
+  timestamp: string
+  total_equity: number
+  cash: number
+  positions_value: number
+  unrealized_pnl: number
+  position_details: LivePositionData[]
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// PREDICTION CARD COMPONENT
+// UTILITY FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function PredictionCard({ prediction }: { prediction: Prediction }) {
-  const isLong = prediction.direction === 'LONG'
+function formatCurrency(value: number, showSign = false): string {
+  const formatted = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(value))
+  
+  if (showSign && value !== 0) {
+    return value >= 0 ? `+${formatted}` : `-${formatted}`
+  }
+  return value < 0 ? `-${formatted}` : formatted
+}
+
+function formatPercent(value: number, showSign = false): string {
+  const formatted = `${Math.abs(value).toFixed(2)}%`
+  if (showSign && value !== 0) {
+    return value >= 0 ? `+${formatted}` : `-${formatted}`
+  }
+  return value < 0 ? `-${formatted}` : formatted
+}
+
+function formatTimeAgo(timestamp: string): string {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  
+  if (diffMins < 1) return 'just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  
+  const diffHours = Math.floor(diffMins / 60)
+  if (diffHours < 24) return `${diffHours}h ago`
+  
+  return date.toLocaleDateString()
+}
+
+function getMarginRiskColor(riskPct: number): string {
+  if (riskPct >= 70) return 'text-accent-red'
+  if (riskPct >= 50) return 'text-accent-amber'
+  if (riskPct >= 30) return 'text-yellow-500'
+  return 'text-accent-emerald'
+}
+
+function getMarginRiskLabel(riskPct: number): string {
+  if (riskPct >= 70) return 'DANGER'
+  if (riskPct >= 50) return 'WARNING'
+  if (riskPct >= 30) return 'ELEVATED'
+  return 'OK'
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ANIMATED VALUE COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function AnimatedValue({ 
+  value, 
+  format, 
+  className,
+  showSign = false 
+}: { 
+  value: number
+  format: 'currency' | 'percent' | 'number'
+  className?: string
+  showSign?: boolean
+}) {
+  const [displayValue, setDisplayValue] = useState(value)
+  const [isChanging, setIsChanging] = useState(false)
+  const prevValue = useRef(value)
+  
+  useEffect(() => {
+    if (Math.abs(value - prevValue.current) > 0.001) {
+      setIsChanging(true)
+      setDisplayValue(value)
+      prevValue.current = value
+      
+      const timeout = setTimeout(() => setIsChanging(false), 500)
+      return () => clearTimeout(timeout)
+    }
+  }, [value])
+  
+  let formatted: string
+  if (format === 'currency') {
+    formatted = formatCurrency(displayValue, showSign)
+  } else if (format === 'percent') {
+    formatted = formatPercent(displayValue, showSign)
+  } else {
+    formatted = showSign && displayValue > 0 
+      ? `+${displayValue.toLocaleString()}` 
+      : displayValue.toLocaleString()
+  }
+  
+  return (
+    <span className={clsx(
+      className,
+      'transition-all duration-300',
+      isChanging && 'animate-pulse scale-105'
+    )}>
+      {formatted}
+    </span>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LIVE INDICATOR COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function LiveIndicator({ 
+  connected, 
+  lastUpdate 
+}: { 
+  connected: boolean
+  lastUpdate: Date | null 
+}) {
+  const [secondsAgo, setSecondsAgo] = useState(0)
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (lastUpdate) {
+        const diff = Math.floor((Date.now() - lastUpdate.getTime()) / 1000)
+        setSecondsAgo(diff)
+      }
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [lastUpdate])
+  
+  return (
+    <div className={clsx(
+      'flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium',
+      connected 
+        ? 'bg-accent-emerald/10 border-accent-emerald/30 text-accent-emerald'
+        : 'bg-accent-red/10 border-accent-red/30 text-accent-red'
+    )}>
+      {connected ? (
+        <>
+          <Radio className="w-3 h-3 animate-pulse" />
+          <span>LIVE</span>
+          {lastUpdate && secondsAgo < 60 && (
+            <span className="text-text-muted">
+              {secondsAgo === 0 ? 'now' : `${secondsAgo}s ago`}
+            </span>
+          )}
+        </>
+      ) : (
+        <>
+          <WifiOff className="w-3 h-3" />
+          <span>DISCONNECTED</span>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// POSITION CARD COMPONENT (with live updates)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function PositionCard({ 
+  position,
+  liveData
+}: { 
+  position: PortfolioPosition
+  liveData?: LivePositionData
+}) {
+  const isLong = position.direction === 'LONG'
+  const coin = position.symbol.replace('USDT', '')
+  
+  // Use live data if available, otherwise fall back to position data
+  const currentPrice = liveData?.current_price ?? position.current_price
+  const unrealizedPnl = liveData?.unrealized_pnl ?? position.unrealized_pnl
+  const unrealizedPnlPct = liveData?.unrealized_pnl_pct ?? position.unrealized_pnl_pct
+  const isProfitable = unrealizedPnl >= 0
   
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       className={clsx(
-        'glass-card p-3 border-l-4 transition-all hover:scale-[1.02]',
-        isLong ? 'border-l-accent-emerald' : 'border-l-accent-red'
+        'glass-card p-4 border-l-4 transition-all hover:scale-[1.01]',
+        isProfitable ? 'border-l-accent-emerald' : 'border-l-accent-red'
       )}
     >
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-lg font-bold text-text-primary">{prediction.coin}</span>
-          <span className={clsx(
-            'px-2 py-0.5 text-xs font-bold rounded',
-            isLong 
-              ? 'bg-accent-emerald/20 text-accent-emerald' 
-              : 'bg-accent-red/20 text-accent-red'
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-3">
+          <div className={clsx(
+            'w-10 h-10 rounded-lg flex items-center justify-center',
+            isLong ? 'bg-accent-emerald/20' : 'bg-accent-red/20'
           )}>
-            {prediction.direction}
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
-          {isLong ? (
-            <TrendingUp className="w-5 h-5 text-accent-emerald" />
-          ) : (
-            <TrendingDown className="w-5 h-5 text-accent-red" />
-          )}
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-2 gap-2 mb-2">
-        <div>
-          <span className="text-xs text-text-muted">Conviction</span>
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-2 bg-surface-2 rounded-full overflow-hidden">
-              <div 
-                className={clsx(
-                  'h-full rounded-full transition-all',
-                  prediction.conviction >= 70 ? 'bg-accent-emerald' :
-                  prediction.conviction >= 50 ? 'bg-accent-amber' : 'bg-accent-red'
-                )}
-                style={{ width: `${prediction.conviction}%` }}
-              />
+            {isLong ? (
+              <TrendingUp className="w-5 h-5 text-accent-emerald" />
+            ) : (
+              <TrendingDown className="w-5 h-5 text-accent-red" />
+            )}
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-bold text-text-primary">{coin}</span>
+              <span className={clsx(
+                'px-2 py-0.5 text-xs font-bold rounded',
+                isLong 
+                  ? 'bg-accent-emerald/20 text-accent-emerald' 
+                  : 'bg-accent-red/20 text-accent-red'
+              )}>
+                {position.direction}
+              </span>
+              <span className="text-xs text-accent-cyan font-mono">{position.leverage}x</span>
             </div>
-            <span className="text-sm font-mono font-bold text-text-primary">
-              {prediction.conviction}%
+            <span className="text-xs text-text-muted flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {formatTimeAgo(position.opened_at)}
             </span>
           </div>
         </div>
-        <div>
-          <span className="text-xs text-text-muted">Leverage</span>
-          <div className="text-sm font-mono font-bold text-accent-cyan">
-            {prediction.leverage.toFixed(1)}x
-          </div>
+        
+        {/* PnL - Animated */}
+        <div className="text-right">
+          <AnimatedValue
+            value={unrealizedPnl}
+            format="currency"
+            showSign
+            className={clsx(
+              'text-xl font-mono font-bold block',
+              isProfitable ? 'text-accent-emerald' : 'text-accent-red'
+            )}
+          />
+          <AnimatedValue
+            value={unrealizedPnlPct}
+            format="percent"
+            showSign
+            className={clsx(
+              'text-sm font-mono',
+              isProfitable ? 'text-accent-emerald' : 'text-accent-red'
+            )}
+          />
         </div>
       </div>
       
-      <p className="text-xs text-text-secondary italic truncate">
-        "{prediction.reason}"
-      </p>
+      {/* Price Info */}
+      <div className="grid grid-cols-3 gap-3 mb-3">
+        <div>
+          <span className="text-xs text-text-muted block">Entry</span>
+          <span className="text-sm font-mono text-text-primary">
+            ${position.entry_price.toLocaleString()}
+          </span>
+        </div>
+        <div>
+          <span className="text-xs text-text-muted block">Current</span>
+          <AnimatedValue
+            value={currentPrice}
+            format="number"
+            className={clsx(
+              'text-sm font-mono',
+              isProfitable ? 'text-accent-emerald' : 'text-accent-red'
+            )}
+          />
+        </div>
+        <div>
+          <span className="text-xs text-text-muted block">Size</span>
+          <span className="text-sm font-mono text-text-primary">
+            ${position.size_usdt.toFixed(0)}
+          </span>
+        </div>
+      </div>
+      
+      {/* Risk Gauge */}
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex-1">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-text-muted flex items-center gap-1">
+              <Gauge className="w-3 h-3" />
+              Margin Risk
+            </span>
+            <span className={clsx(
+              'text-xs font-bold',
+              getMarginRiskColor(position.margin_risk_pct)
+            )}>
+              {getMarginRiskLabel(position.margin_risk_pct)}
+            </span>
+          </div>
+          <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
+            <div 
+              className={clsx(
+                'h-full rounded-full transition-all',
+                position.margin_risk_pct >= 70 ? 'bg-accent-red' :
+                position.margin_risk_pct >= 50 ? 'bg-accent-amber' :
+                position.margin_risk_pct >= 30 ? 'bg-yellow-500' : 'bg-accent-emerald'
+              )}
+              style={{ width: `${Math.min(position.margin_risk_pct, 100)}%` }}
+            />
+          </div>
+        </div>
+        <div className="text-right">
+          <span className="text-xs text-text-muted block">Liquidation</span>
+          <span className="text-xs font-mono text-accent-red">
+            {position.liquidation_price ? `$${position.liquidation_price.toLocaleString()}` : '-'}
+          </span>
+        </div>
+      </div>
+      
+      {/* Conviction & Reason */}
+      <div className="pt-3 border-t border-glass-border">
+        <div className="flex items-center gap-2 mb-2">
+          <Target className="w-3 h-3 text-accent-cyan" />
+          <span className="text-xs text-text-muted">Conviction: </span>
+          <span className="text-xs font-bold text-accent-cyan">{position.conviction}%</span>
+        </div>
+        <p className="text-xs text-text-secondary italic line-clamp-2">
+          "{position.reason}"
+        </p>
+      </div>
     </motion.div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ACTIVITY FEED COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function ActivityItem({ 
+  action, 
+  symbol, 
+  details, 
+  timestamp 
+}: { 
+  action: 'opened' | 'closed' | 'extended' | 'reduced' | 'kept'
+  symbol: string
+  details: string
+  timestamp: string
+}) {
+  const actionConfig = {
+    opened: { icon: Plus, color: 'text-accent-emerald', bg: 'bg-accent-emerald/20', label: 'Opened' },
+    closed: { icon: X, color: 'text-accent-red', bg: 'bg-accent-red/20', label: 'Closed' },
+    extended: { icon: ArrowUpRight, color: 'text-accent-cyan', bg: 'bg-accent-cyan/20', label: 'Extended' },
+    reduced: { icon: ArrowDownRight, color: 'text-accent-amber', bg: 'bg-accent-amber/20', label: 'Reduced' },
+    kept: { icon: Check, color: 'text-text-muted', bg: 'bg-surface-2', label: 'Kept' },
+  }
+  
+  const config = actionConfig[action]
+  const Icon = config.icon
+  
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      className="flex items-start gap-3 py-3 border-b border-glass-border/50 last:border-0"
+    >
+      <div className={clsx('w-8 h-8 rounded-lg flex items-center justify-center', config.bg)}>
+        <Icon className={clsx('w-4 h-4', config.color)} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-text-primary">{symbol.replace('USDT', '')}</span>
+          <span className={clsx('text-xs px-1.5 py-0.5 rounded', config.bg, config.color)}>
+            {config.label}
+          </span>
+        </div>
+        <p className="text-xs text-text-secondary truncate">{details}</p>
+      </div>
+      <span className="text-xs text-text-muted whitespace-nowrap">{formatTimeAgo(timestamp)}</span>
+    </motion.div>
+  )
+}
+
+function ActivityFeed({ entries }: { entries: LogEntry[] }) {
+  const activities: Array<{
+    action: 'opened' | 'closed' | 'extended' | 'reduced' | 'kept'
+    symbol: string
+    details: string
+    timestamp: string
+  }> = []
+  
+  entries.slice(0, 5).forEach(entry => {
+    entry.positions_opened?.forEach(pos => {
+      activities.push({
+        action: 'opened',
+        symbol: pos.symbol,
+        details: `${pos.direction} at ${pos.conviction}% conviction`,
+        timestamp: entry.timestamp,
+      })
+    })
+    entry.positions_closed?.forEach(pos => {
+      activities.push({
+        action: 'closed',
+        symbol: pos.symbol,
+        details: `${formatCurrency(pos.pnl, true)} - ${pos.reason}`,
+        timestamp: entry.timestamp,
+      })
+    })
+    entry.positions_extended?.forEach(pos => {
+      activities.push({
+        action: 'extended',
+        symbol: pos.symbol,
+        details: `+${pos.scale_percent}% - ${pos.reason}`,
+        timestamp: entry.timestamp,
+      })
+    })
+    entry.positions_reduced?.forEach(pos => {
+      activities.push({
+        action: 'reduced',
+        symbol: pos.symbol,
+        details: `-${pos.scale_percent}% - ${pos.reason}`,
+        timestamp: entry.timestamp,
+      })
+    })
+  })
+  
+  activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+  const recentActivities = activities.slice(0, 10)
+  
+  return (
+    <div className="glass-card p-4">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
+          <Activity className="w-4 h-4 text-accent-cyan" />
+          Recent Activity
+        </h3>
+        <a href="/logbook" className="text-xs text-accent-cyan hover:underline flex items-center gap-1">
+          View All <ChevronRight className="w-3 h-3" />
+        </a>
+      </div>
+      
+      {recentActivities.length > 0 ? (
+        <div className="space-y-0">
+          {recentActivities.map((activity, idx) => (
+            <ActivityItem key={idx} {...activity} />
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-8 text-text-muted">
+          <Activity className="w-8 h-8 mx-auto mb-2 opacity-20" />
+          <p className="text-sm">No recent activity</p>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -172,17 +613,14 @@ function EquityChart({ data, startingCapital }: { data: EquityPoint[], startingC
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     
-    // High DPI canvas
     const dpr = window.devicePixelRatio || 1
     const rect = canvas.getBoundingClientRect()
     canvas.width = rect.width * dpr
     canvas.height = rect.height * dpr
     ctx.scale(dpr, dpr)
     
-    // Clear
     ctx.clearRect(0, 0, rect.width, rect.height)
     
-    // Calculate bounds
     const values = data.map(d => d.total_equity)
     const minVal = Math.min(...values, startingCapital * 0.95)
     const maxVal = Math.max(...values, startingCapital * 1.05)
@@ -192,7 +630,6 @@ function EquityChart({ data, startingCapital }: { data: EquityPoint[], startingC
     const chartWidth = rect.width - padding.left - padding.right
     const chartHeight = rect.height - padding.top - padding.bottom
     
-    // Draw grid lines
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)'
     ctx.lineWidth = 1
     for (let i = 0; i <= 4; i++) {
@@ -202,7 +639,6 @@ function EquityChart({ data, startingCapital }: { data: EquityPoint[], startingC
       ctx.lineTo(rect.width - padding.right, y)
       ctx.stroke()
       
-      // Y-axis labels
       const val = maxVal - (range * i / 4)
       ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'
       ctx.font = '10px monospace'
@@ -210,7 +646,6 @@ function EquityChart({ data, startingCapital }: { data: EquityPoint[], startingC
       ctx.fillText(`$${(val / 1000).toFixed(1)}k`, padding.left - 5, y + 3)
     }
     
-    // Draw baseline (starting capital)
     const baselineY = padding.top + ((maxVal - startingCapital) / range) * chartHeight
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'
     ctx.setLineDash([4, 4])
@@ -220,7 +655,6 @@ function EquityChart({ data, startingCapital }: { data: EquityPoint[], startingC
     ctx.stroke()
     ctx.setLineDash([])
     
-    // Draw equity line with gradient
     const latestEquity = values[values.length - 1]
     const isProfit = latestEquity >= startingCapital
     const color = isProfit ? '#10b981' : '#ef4444'
@@ -242,7 +676,6 @@ function EquityChart({ data, startingCapital }: { data: EquityPoint[], startingC
     })
     ctx.stroke()
     
-    // Fill gradient under line
     const gradient = ctx.createLinearGradient(0, padding.top, 0, padding.top + chartHeight)
     gradient.addColorStop(0, isProfit ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)')
     gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
@@ -253,7 +686,6 @@ function EquityChart({ data, startingCapital }: { data: EquityPoint[], startingC
     ctx.fillStyle = gradient
     ctx.fill()
     
-    // Draw latest value dot
     const lastX = padding.left + chartWidth
     const lastY = padding.top + ((maxVal - latestEquity) / range) * chartHeight
     ctx.beginPath()
@@ -277,19 +709,20 @@ function EquityChart({ data, startingCapital }: { data: EquityPoint[], startingC
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
           <LineChart className="w-4 h-4 text-accent-cyan" />
-          Real-Time Equity
+          Equity History
+          <span className="text-xs text-text-muted font-normal">({data.length} points)</span>
         </h3>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-text-muted">{data.length}s</span>
-          <span className={clsx(
+        <AnimatedValue
+          value={pnl}
+          format="currency"
+          showSign
+          className={clsx(
             'text-sm font-mono font-bold',
             pnl >= 0 ? 'text-accent-emerald' : 'text-accent-red'
-          )}>
-            {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)} ({pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(3)}%)
-          </span>
-        </div>
+          )}
+        />
       </div>
-      <div className="relative h-64">
+      <div className="relative h-48">
         {data.length < 2 ? (
           <div className="absolute inset-0 flex items-center justify-center text-text-muted text-sm">
             <div className="text-center">
@@ -310,93 +743,26 @@ function EquityChart({ data, startingCapital }: { data: EquityPoint[], startingC
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// CYCLE CARD COMPONENT
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function CycleCard({ cycle }: { cycle: Cycle }) {
-  const pnl = cycle.total_pnl || 0
-  const isProfit = pnl >= 0
-  
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      className="glass-card p-3"
-    >
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-accent-cyan">Cycle #{cycle.cycle_number}</span>
-          <span className={clsx(
-            'px-2 py-0.5 text-xs rounded',
-            cycle.status === 'completed' ? 'bg-accent-emerald/20 text-accent-emerald' : 'bg-accent-amber/20 text-accent-amber'
-          )}>
-            {cycle.status}
-          </span>
-        </div>
-        <span className="text-xs text-text-muted">
-          {new Date(cycle.started_at).toLocaleTimeString()}
-        </span>
-      </div>
-      
-      <div className="grid grid-cols-3 gap-3 mb-3">
-        <div>
-          <span className="text-xs text-text-muted block">Capital</span>
-          <span className="text-sm font-mono text-text-primary">
-            ${cycle.capital_after?.toLocaleString() || cycle.capital_before?.toLocaleString()}
-          </span>
-        </div>
-        <div>
-          <span className="text-xs text-text-muted block">PnL</span>
-          <span className={clsx(
-            'text-sm font-mono font-bold',
-            isProfit ? 'text-accent-emerald' : 'text-accent-red'
-          )}>
-            {isProfit ? '+' : ''}{pnl.toFixed(2)}
-          </span>
-        </div>
-        <div>
-          <span className="text-xs text-text-muted block">Avg Conviction</span>
-          <span className="text-sm font-mono text-text-primary">
-            {cycle.avg_conviction?.toFixed(0) || 0}%
-          </span>
-        </div>
-      </div>
-      
-      <div className="flex flex-wrap gap-1">
-        {cycle.coins_traded?.slice(0, 5).map(coin => (
-          <span key={coin} className="px-2 py-0.5 text-xs bg-surface-2 rounded text-text-secondary">
-            {coin}
-          </span>
-        ))}
-        {(cycle.coins_traded?.length || 0) > 5 && (
-          <span className="px-2 py-0.5 text-xs bg-surface-2 rounded text-text-muted">
-            +{cycle.coins_traded.length - 5} more
-          </span>
-        )}
-      </div>
-    </motion.div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // MAIN DASHBOARD
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true)
-  const [status, setStatus] = useState<TraderStatus | null>(null)
-  const [predictions, setPredictions] = useState<Prediction[]>([])
-  const [cycles, setCycles] = useState<Cycle[]>([])
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
+  const [pmStatus, setPmStatus] = useState<PortfolioManagerStatus | null>(null)
+  const [logEntries, setLogEntries] = useState<LogEntry[]>([])
   const [error, setError] = useState<string | null>(null)
   const [equityData, setEquityData] = useState<EquityPoint[]>([])
   const [wsConnected, setWsConnected] = useState(false)
+  const [lastWsUpdate, setLastWsUpdate] = useState<Date | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  const [triggeringCycle, setTriggeringCycle] = useState(false)
+  
+  // Live equity data from WebSocket
+  const [liveEquity, setLiveEquity] = useState<LiveEquityData | null>(null)
   
   // Phase tracking state
   const [currentPhase, setCurrentPhase] = useState<'idle' | 'fetching' | 'analyzing' | 'trading'>('idle')
   const [nextCycleAt, setNextCycleAt] = useState<number | null>(null)
-  const [cycleNumber, setCycleNumber] = useState<number>(0)
   const [countdown, setCountdown] = useState<string>('')
   const [progressCurrent, setProgressCurrent] = useState<number>(0)
   const [progressTotal, setProgressTotal] = useState<number>(0)
@@ -405,7 +771,7 @@ export default function Dashboard() {
   useEffect(() => {
     const connectWebSocket = () => {
       try {
-        const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000/ws/equity'
+        const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws/equity'
         const ws = new WebSocket(wsUrl)
         wsRef.current = ws
         
@@ -419,21 +785,28 @@ export default function Dashboard() {
             const message = JSON.parse(event.data)
             
             if (message.type === 'equity_update' && message.data) {
+              const data = message.data as LiveEquityData
+              setLastWsUpdate(new Date())
+              
+              // Update live equity state for hero metrics
+              setLiveEquity(data)
+              
+              // Add to chart data
               setEquityData(prev => {
-                const newData = [...prev, message.data]
-                // Keep last 120 seconds (2 minutes)
+                const newData = [...prev, {
+                  timestamp: data.timestamp,
+                  total_equity: data.total_equity,
+                  unrealized_pnl: data.unrealized_pnl,
+                  cash: data.cash,
+                }]
                 return newData.slice(-120)
               })
             }
             
-            // Handle phase updates
             if (message.type === 'phase') {
               setCurrentPhase(message.phase)
               if (message.next_cycle_at) {
                 setNextCycleAt(message.next_cycle_at)
-              }
-              if (message.cycle_number) {
-                setCycleNumber(message.cycle_number)
               }
               if (message.progress_current !== undefined) {
                 setProgressCurrent(message.progress_current)
@@ -443,10 +816,10 @@ export default function Dashboard() {
               }
             }
             
-            // Handle paper trades reset - clear equity data
             if (message.type === 'paper_trades_reset') {
               console.log('Paper trades reset received - clearing equity data')
               setEquityData([])
+              setLiveEquity(null)
             }
           } catch (e) {
             console.error('Failed to parse WebSocket message:', e)
@@ -456,7 +829,6 @@ export default function Dashboard() {
         ws.onclose = () => {
           console.log('Equity WebSocket disconnected')
           setWsConnected(false)
-          // Reconnect after 3 seconds
           setTimeout(connectWebSocket, 3000)
         }
         
@@ -506,25 +878,25 @@ export default function Dashboard() {
     return () => clearInterval(interval)
   }, [currentPhase, nextCycleAt])
 
-  // Fetch data
+  // Fetch data from API (less frequently - WebSocket handles real-time)
   useEffect(() => {
     async function fetchData() {
       try {
-        const [statusData, predictionsData, cyclesData] = await Promise.all([
-          api.getTraderStatus().catch(e => { console.error('Status error:', e); return null }),
-          api.getPredictions(200).catch(e => { console.error('Predictions error:', e); return [] }),  // Increased to show all 25 coins
-          api.getPredictionCycles(10).catch(e => { console.error('Cycles error:', e); return [] }),
+        const [statusData, logData] = await Promise.all([
+          api.getPortfolioManagerStatus().catch(e => { console.error('PM status error:', e); return null }),
+          fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/logbook?limit=10`)
+            .then(r => r.ok ? r.json() : [])
+            .catch(e => { console.error('Logbook error:', e); return [] }),
         ])
 
-        if (statusData) setStatus(statusData)
-        if (predictionsData) setPredictions(predictionsData)
-        // Sort cycles by cycle_number descending (highest first)
-        if (cyclesData) {
-          const sorted = [...cyclesData].sort((a, b) => b.cycle_number - a.cycle_number)
-          setCycles(sorted)
+        if (statusData) {
+          setPmStatus(statusData)
+          if (statusData.phase) {
+            setCurrentPhase(statusData.phase as any)
+          }
         }
+        if (logData) setLogEntries(logData)
         
-        setLastRefresh(new Date())
         setError(null)
       } catch (e) {
         console.error('Failed to fetch data:', e)
@@ -535,19 +907,44 @@ export default function Dashboard() {
     }
 
     fetchData()
-    const interval = setInterval(fetchData, 10000) // Refresh every 10s
+    // Poll less frequently since WebSocket provides real-time data
+    const interval = setInterval(fetchData, 15000)
     return () => clearInterval(interval)
   }, [])
 
-  // Calculate metrics - use total equity (includes unrealized PnL), not just cash
-  const totalEquity = status?.equity?.total_equity || status?.executor?.capital || 100000
-  const startingCapital = status?.executor?.starting_capital || 100000
-  const pnl = totalEquity - startingCapital
-  const pnlPercent = ((pnl / startingCapital) * 100)
+  // Calculate metrics - prefer live data over polled data
+  const stats = pmStatus?.portfolio?.statistics
+  const positions = pmStatus?.portfolio?.positions || []
+  
+  // Use live equity data if available, otherwise fall back to API data
+  const totalEquity = liveEquity?.total_equity ?? stats?.total_equity ?? 100000
+  const unrealizedPnl = liveEquity?.unrealized_pnl ?? stats?.unrealized_pnl ?? 0
+  const startingCapital = stats?.starting_capital || 100000
+  const totalPnl = (stats?.realized_pnl || 0) + unrealizedPnl
+  const pnlPercent = startingCapital > 0 ? ((totalPnl / startingCapital) * 100) : 0
+  
+  // Build a map of live position data for quick lookup
+  const livePositionMap = new Map<string, LivePositionData>()
+  if (liveEquity?.position_details) {
+    liveEquity.position_details.forEach(pd => {
+      livePositionMap.set(pd.symbol, pd)
+    })
+  }
 
-  // Get latest cycle's predictions
-  const latestCycle = cycles[0]
-  const latestPredictions = predictions.filter(p => p.cycle_id === latestCycle?.id)
+  // Handler for manually triggering a cycle
+  const handleTriggerCycle = useCallback(async () => {
+    if (triggeringCycle || currentPhase !== 'idle') return
+    
+    setTriggeringCycle(true)
+    try {
+      await api.triggerCycle()
+    } catch (e) {
+      console.error('Failed to trigger cycle:', e)
+      setError('Failed to trigger cycle')
+    } finally {
+      setTriggeringCycle(false)
+    }
+  }, [triggeringCycle, currentPhase])
 
   // Loading state
   if (loading) {
@@ -559,10 +956,10 @@ export default function Dashboard() {
           className="text-center"
         >
           <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-accent-cyan to-accent-emerald flex items-center justify-center shadow-glow-cyan-intense">
-            <Zap className="w-10 h-10 text-void animate-pulse" />
+            <Brain className="w-10 h-10 text-void animate-pulse" />
           </div>
-          <h1 className="text-xl font-semibold gradient-text mb-2">Simple Prediction Trader</h1>
-          <p className="text-text-muted text-sm">Loading predictions...</p>
+          <h1 className="text-xl font-semibold gradient-text mb-2">Portfolio Manager</h1>
+          <p className="text-text-muted text-sm">Loading portfolio...</p>
         </motion.div>
       </div>
     )
@@ -570,18 +967,19 @@ export default function Dashboard() {
 
   return (
     <div className="flex min-h-screen bg-void">
-      <Sidebar isConnected={status?.running || false} />
+      <Sidebar isConnected={pmStatus?.running || wsConnected} />
 
       <main className="flex-1 ml-[280px] p-6 lg:p-8">
         {/* Header */}
-        <header className="flex items-center justify-between mb-8">
+        <header className="flex items-center justify-between mb-6">
           <div>
             <motion.h1 
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               className="text-2xl font-semibold text-text-primary tracking-tight flex items-center gap-3"
             >
-              🎯 Prediction Trader
+              <Brain className="w-7 h-7 text-accent-cyan" />
+              Portfolio Manager
               {/* Dynamic Phase Indicator */}
               <AnimatePresence mode="wait">
                 <motion.span 
@@ -613,7 +1011,7 @@ export default function Dashboard() {
                   {currentPhase === 'analyzing' && (
                     <>
                       <Brain className="w-3 h-3 animate-pulse" />
-                      {progressTotal > 0 ? `ANALYZING ${progressCurrent}/${progressTotal}` : 'AI ANALYZING'}
+                      {progressTotal > 0 ? `ANALYZING ${progressCurrent}/${progressTotal}` : 'GROK ANALYZING'}
                     </>
                   )}
                   {currentPhase === 'trading' && (
@@ -625,32 +1023,43 @@ export default function Dashboard() {
                 </motion.span>
               </AnimatePresence>
               <span className="px-2 py-0.5 text-xs font-bold bg-purple-500/20 text-purple-400 rounded border border-purple-500/40">
-                {status?.mode?.toUpperCase() || 'PAPER'}
+                {pmStatus?.mode?.toUpperCase() || 'PAPER'}
               </span>
             </motion.h1>
             <p className="text-xs text-text-muted mt-1 flex items-center gap-2">
               <Clock className="w-3 h-3" />
-              Last updated: {lastRefresh.toLocaleTimeString()} • 
-              {status?.cycle_interval_seconds ? ` ${Math.round(status.cycle_interval_seconds / 60)}min cycles` : ' 15min cycles'}
-              <span className={clsx(
-                'inline-flex items-center gap-1 ml-2',
-                wsConnected ? 'text-accent-emerald' : 'text-accent-amber'
-              )}>
-                <span className={clsx(
-                  'w-1.5 h-1.5 rounded-full',
-                  wsConnected ? 'bg-accent-emerald animate-pulse' : 'bg-accent-amber'
-                )} />
-                {wsConnected ? 'Live' : 'Connecting...'}
-              </span>
+              {pmStatus?.cycle_interval_seconds ? `${Math.round(pmStatus.cycle_interval_seconds / 60)}min cycles` : '10min cycles'}
             </p>
           </div>
 
-          <button
-            onClick={() => window.location.reload()}
-            className="btn-ghost p-2"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Live Indicator */}
+            <LiveIndicator connected={wsConnected} lastUpdate={lastWsUpdate} />
+            
+            <button
+              onClick={handleTriggerCycle}
+              disabled={triggeringCycle || currentPhase !== 'idle'}
+              className={clsx(
+                'flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all',
+                currentPhase === 'idle' && !triggeringCycle
+                  ? 'bg-accent-emerald/20 text-accent-emerald border border-accent-emerald/40 hover:bg-accent-emerald/30'
+                  : 'bg-surface-2 text-text-muted border border-surface-3 cursor-not-allowed'
+              )}
+            >
+              {triggeringCycle ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Play className="w-4 h-4" />
+              )}
+              Run Analysis
+            </button>
+            <button
+              onClick={() => window.location.reload()}
+              className="btn-ghost p-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </div>
         </header>
 
         {error && (
@@ -660,45 +1069,60 @@ export default function Dashboard() {
         )}
 
         {/* Hero Metrics */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className={clsx(
-              'glass-card p-3',
-              pnl >= 0 ? 'border-glow-emerald' : 'border-glow-red'
+              'glass-card p-4',
+              totalPnl >= 0 ? 'border-glow-emerald' : 'border-glow-red'
             )}
           >
             <div className="flex items-center justify-between mb-1">
-              <span className="text-label">Portfolio</span>
+              <span className="text-label">Total Equity</span>
               <DollarSign className="w-5 h-5 text-accent-cyan" />
             </div>
-            <div className="text-2xl font-mono font-semibold text-text-primary">
-              ${totalEquity.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-            </div>
-            <div className={clsx(
-              'text-xs font-mono',
-              pnl >= 0 ? 'text-accent-emerald' : 'text-accent-red'
-            )}>
-              {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)} ({pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%)
-            </div>
+            <AnimatedValue
+              value={totalEquity}
+              format="currency"
+              className="text-2xl font-mono font-semibold text-text-primary block"
+            />
+            <AnimatedValue
+              value={totalPnl}
+              format="currency"
+              showSign
+              className={clsx(
+                'text-xs font-mono',
+                totalPnl >= 0 ? 'text-accent-emerald' : 'text-accent-red'
+              )}
+            />
           </motion.div>
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05 }}
-            className="glass-card p-3"
+            className="glass-card p-4"
           >
             <div className="flex items-center justify-between mb-1">
-              <span className="text-label">Open Positions</span>
-              <Activity className="w-5 h-5 text-accent-amber" />
+              <span className="text-label">Unrealized PnL</span>
+              {unrealizedPnl >= 0 ? (
+                <TrendingUp className="w-5 h-5 text-accent-emerald" />
+              ) : (
+                <TrendingDown className="w-5 h-5 text-accent-red" />
+              )}
             </div>
-            <div className="text-2xl font-mono font-semibold text-text-primary">
-              {status?.executor?.open_positions || 0}
-            </div>
+            <AnimatedValue
+              value={unrealizedPnl}
+              format="currency"
+              showSign
+              className={clsx(
+                'text-2xl font-mono font-semibold block',
+                unrealizedPnl >= 0 ? 'text-accent-emerald' : 'text-accent-red'
+              )}
+            />
             <div className="text-xs text-text-muted">
-              {status?.top_coins_count || 10} coins per cycle
+              Open positions
             </div>
           </motion.div>
 
@@ -706,17 +1130,23 @@ export default function Dashboard() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="glass-card p-3"
+            className="glass-card p-4"
           >
             <div className="flex items-center justify-between mb-1">
-              <span className="text-label">Total Cycles</span>
-              <BarChart3 className="w-5 h-5 text-purple-400" />
+              <span className="text-label">Realized PnL</span>
+              <Wallet className="w-5 h-5 text-accent-amber" />
             </div>
-            <div className="text-2xl font-mono font-semibold text-text-primary">
-              {cycles.length || status?.executor?.total_cycles || 0}
-            </div>
+            <AnimatedValue
+              value={stats?.realized_pnl || 0}
+              format="currency"
+              showSign
+              className={clsx(
+                'text-2xl font-mono font-semibold block',
+                (stats?.realized_pnl || 0) >= 0 ? 'text-accent-emerald' : 'text-accent-red'
+              )}
+            />
             <div className="text-xs text-text-muted">
-              {status?.executor?.total_trades || 0} total trades
+              {stats?.winning_trades || 0}W / {stats?.losing_trades || 0}L ({(stats?.win_rate || 0).toFixed(0)}%)
             </div>
           </motion.div>
 
@@ -724,185 +1154,199 @@ export default function Dashboard() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
-            className="glass-card p-3"
+            className="glass-card p-4"
           >
             <div className="flex items-center justify-between mb-1">
-              <span className="text-label">Trading Costs</span>
-              <Wallet className="w-5 h-5 text-accent-red" />
+              <span className="text-label">Positions</span>
+              <BarChart3 className="w-5 h-5 text-purple-400" />
             </div>
-            <div className="text-2xl font-mono font-semibold text-accent-red">
-              ${(status?.executor?.total_trading_costs || 0).toFixed(2)}
+            <div className="text-2xl font-mono font-semibold text-text-primary">
+              {stats?.open_positions || positions.length} / {stats?.max_positions || 5}
             </div>
             <div className="text-xs text-text-muted">
-              Fees: ${(status?.executor?.total_fees_paid || 0).toFixed(2)}
+              {stats?.available_slots || 0} slots available
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className={clsx(
+              'glass-card p-4',
+              stats?.deployment?.below_minimum && 'border-glow-red'
+            )}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-label">Deployment</span>
+              {stats?.deployment?.below_minimum ? (
+                <AlertTriangle className="w-5 h-5 text-accent-red" />
+              ) : (
+                <Target className="w-5 h-5 text-accent-cyan" />
+              )}
+            </div>
+            <div className="text-2xl font-mono font-semibold text-text-primary">
+              {(stats?.deployment?.deployment_percent || 0).toFixed(0)}%
+            </div>
+            <div className="text-xs text-text-muted">
+              {stats?.deployment?.below_minimum 
+                ? `Deploy $${stats?.deployment?.capital_to_deploy?.toFixed(0)}` 
+                : 'On target'}
             </div>
           </motion.div>
         </div>
 
-        {/* Real-Time Equity Chart */}
+        {/* Equity Chart */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
+          transition={{ delay: 0.25 }}
           className="mb-6"
         >
           <EquityChart 
             data={equityData} 
-            startingCapital={status?.executor?.starting_capital || 100000} 
+            startingCapital={stats?.starting_capital || 100000} 
           />
         </motion.div>
 
-        {/* Main Grid */}
+        {/* Main Grid: Positions + Activity */}
         <div className="grid grid-cols-12 gap-4">
-          {/* Left Column - Latest Predictions */}
+          {/* Positions Panel */}
           <div className="col-span-12 xl:col-span-8">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="glass-card p-4"
             >
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
-                  <Zap className="w-5 h-5 text-accent-cyan" />
-                  Latest Predictions
-                  {latestCycle && (
-                    <span className="text-sm text-text-muted font-normal">
-                      (Cycle #{latestCycle.cycle_number})
+                  <Shield className="w-5 h-5 text-accent-emerald" />
+                  Open Positions
+                  {wsConnected && liveEquity?.position_details && (
+                    <span className="text-xs text-accent-emerald font-normal flex items-center gap-1">
+                      <Radio className="w-3 h-3" /> Live prices
                     </span>
                   )}
                 </h2>
-                <span className="text-xs text-text-muted">
-                  {latestPredictions.length || predictions.length} predictions
-                </span>
+                <a href="/positions" className="text-xs text-accent-cyan hover:underline flex items-center gap-1">
+                  Details <ChevronRight className="w-3 h-3" />
+                </a>
               </div>
 
-              {(latestPredictions.length > 0 || predictions.length > 0) ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {(latestPredictions.length > 0 ? latestPredictions : predictions).map((pred, idx) => (
+              {positions.length > 0 ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {positions.map((position, idx) => (
                     <motion.div
-                      key={pred.id}
+                      key={position.id}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: idx * 0.05 }}
                     >
-                      <PredictionCard prediction={pred} />
+                      <PositionCard 
+                        position={position} 
+                        liveData={livePositionMap.get(position.symbol)}
+                      />
                     </motion.div>
                   ))}
                 </div>
               ) : (
                 <div className="text-center py-12 text-text-muted">
-                  <Zap className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                  <p>No predictions yet. Waiting for first cycle...</p>
+                  <Shield className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                  <p className="font-medium mb-1">No open positions</p>
+                  <p className="text-sm text-text-dim">Grok is analyzing the market for opportunities...</p>
                 </div>
               )}
             </motion.div>
           </div>
 
-          {/* Right Column - Cycles */}
+          {/* Activity Feed */}
           <div className="col-span-12 xl:col-span-4 space-y-4">
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="glass-card p-4"
             >
-              <h2 className="text-lg font-semibold text-text-primary mb-3 flex items-center gap-2">
-                <Clock className="w-5 h-5 text-accent-amber" />
-                Recent Cycles
-              </h2>
-
-              {cycles.length > 0 ? (
-                <div className="space-y-3">
-                  {cycles.slice(0, 5).map((cycle, idx) => (
-                    <motion.div
-                      key={cycle.id}
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: idx * 0.1 }}
-                    >
-                      <CycleCard cycle={cycle} />
-                    </motion.div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8 text-text-muted">
-                  <Clock className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                  <p className="text-sm">No cycles yet</p>
-                </div>
-              )}
+              <ActivityFeed entries={logEntries} />
             </motion.div>
 
-            {/* Open Positions */}
-            {(status?.executor?.positions?.length || 0) > 0 && (
+            {/* Quick Stats */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.1 }}
+              className="glass-card p-4"
+            >
+              <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-accent-cyan" />
+                Trading Statistics
+              </h3>
+              
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-text-secondary">Total Trades</span>
+                  <span className="font-mono text-text-primary">{stats?.total_trades || 0}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-text-secondary">Win Rate</span>
+                  <span className="font-mono text-accent-emerald">{(stats?.win_rate || 0).toFixed(1)}%</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-text-secondary">Trading Fees</span>
+                  <span className="font-mono text-accent-red">{formatCurrency(stats?.total_fees || 0)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-text-secondary">Analysis Cycles</span>
+                  <span className="font-mono text-text-primary">{pmStatus?.logbook?.total_cycles || 0}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-text-secondary">Tokens Used</span>
+                  <span className="font-mono text-text-muted">
+                    {(pmStatus?.logbook?.total_tokens_used || 0).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Transactions Breakdown */}
+            {stats?.transactions && (
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.2 }}
                 className="glass-card p-4"
               >
-                <h2 className="text-lg font-semibold text-text-primary mb-3 flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-accent-emerald" />
-                  Open Positions
-                </h2>
-
-                <div className="space-y-2">
-                  {status?.executor?.positions?.map((pos: any) => (
-                    <div key={pos.position_id} className="flex items-center justify-between p-3 bg-surface-2 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <span className={clsx(
-                          'w-2 h-2 rounded-full',
-                          pos.direction === 'LONG' ? 'bg-accent-emerald' : 'bg-accent-red'
-                        )} />
-                        <span className="font-mono text-sm">{pos.symbol}</span>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs text-text-muted">{pos.leverage?.toFixed(1)}x</div>
-                        <div className="text-xs font-mono">${pos.size_usdt?.toFixed(0)}</div>
-                      </div>
+                <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-accent-cyan" />
+                  Transaction Types
+                </h3>
+                
+                <div className="grid grid-cols-4 gap-2">
+                  <div className="text-center p-2 bg-accent-emerald/10 rounded-lg">
+                    <div className="text-lg font-mono font-bold text-accent-emerald">
+                      {stats.transactions.open}
                     </div>
-                  ))}
+                    <div className="text-xs text-text-muted">Open</div>
+                  </div>
+                  <div className="text-center p-2 bg-accent-red/10 rounded-lg">
+                    <div className="text-lg font-mono font-bold text-accent-red">
+                      {stats.transactions.close}
+                    </div>
+                    <div className="text-xs text-text-muted">Close</div>
+                  </div>
+                  <div className="text-center p-2 bg-accent-cyan/10 rounded-lg">
+                    <div className="text-lg font-mono font-bold text-accent-cyan">
+                      {stats.transactions.extend}
+                    </div>
+                    <div className="text-xs text-text-muted">Extend</div>
+                  </div>
+                  <div className="text-center p-2 bg-accent-amber/10 rounded-lg">
+                    <div className="text-lg font-mono font-bold text-accent-amber">
+                      {stats.transactions.reduce}
+                    </div>
+                    <div className="text-xs text-text-muted">Reduce</div>
+                  </div>
                 </div>
               </motion.div>
             )}
-
-            {/* System Info */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.3 }}
-              className="glass-card p-4"
-            >
-              <h2 className="text-lg font-semibold text-text-primary mb-3">System Info</h2>
-              
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-text-secondary">Mode</span>
-                  <span className="badge badge-paper">{status?.mode?.toUpperCase() || 'PAPER'}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-text-secondary">Status</span>
-                  <span className={clsx(
-                    'text-xs font-medium',
-                    status?.running ? 'text-accent-emerald' : 'text-accent-amber'
-                  )}>
-                    {status?.running ? '● Running' : '○ Idle'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-text-secondary">Cycle Interval</span>
-                  <span className="text-xs font-mono text-text-muted">
-                    {status?.cycle_interval_seconds 
-                      ? `${Math.round(status.cycle_interval_seconds / 60)}m`
-                      : '15m'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-text-secondary">Coins per Cycle</span>
-                  <span className="text-xs font-mono text-text-muted">
-                    {status?.top_coins_count || 10}
-                  </span>
-                </div>
-              </div>
-            </motion.div>
           </div>
         </div>
       </main>

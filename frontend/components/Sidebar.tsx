@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -16,20 +16,10 @@ import {
   Activity,
   Zap,
   AlertTriangle,
+  BookOpen,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { usePortfolio } from '@/lib/usePortfolio'
-import { api } from '@/lib/api'
-
-interface MarginHealth {
-  overall_status: 'safe' | 'warning' | 'danger' | 'critical'
-  summary: {
-    total_positions: number
-    positions_safe: number
-    positions_warning: number
-    positions_danger: number
-  }
-}
 
 interface SidebarProps {
   isConnected: boolean
@@ -38,6 +28,7 @@ interface SidebarProps {
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/' },
   { icon: TrendingUp, label: 'Positions', href: '/positions' },
+  { icon: BookOpen, label: 'Logbook', href: '/logbook' },
   { icon: History, label: 'History', href: '/history' },
   { icon: Shield, label: 'Risk', href: '/risk' },
   { icon: Settings, label: 'Settings', href: '/settings' },
@@ -45,29 +36,17 @@ const navItems = [
 
 export function Sidebar({ isConnected }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
-  const { portfolio } = usePortfolio(5000)
+  const { portfolio, marginHealth } = usePortfolio(3000) // Faster refresh for sidebar
   const pathname = usePathname()
-  const [marginHealth, setMarginHealth] = useState<MarginHealth | null>(null)
 
-  // Fetch margin health data
-  useEffect(() => {
-    async function fetchMarginHealth() {
-      try {
-        const data = await api.getMarginHealth()
-        setMarginHealth(data)
-      } catch (error) {
-        console.error('Failed to fetch margin health:', error)
-      }
-    }
-    
-    fetchMarginHealth()
-    const interval = setInterval(fetchMarginHealth, 10000) // Poll every 10 seconds
-    return () => clearInterval(interval)
-  }, [])
-
-  const pnl = portfolio.totalPnl
-  const pnlPercent = portfolio.pnlPercent
-  const winRate = portfolio.winRate
+  const pnl = isNaN(portfolio?.totalPnl) ? 0 : (portfolio?.totalPnl ?? 0)
+  const pnlPercent = isNaN(portfolio?.pnlPercent) ? 0 : (portfolio?.pnlPercent ?? 0)
+  const winRate = isNaN(portfolio?.winRate) ? 0 : (portfolio?.winRate ?? 0)
+  const totalEquity = isNaN(portfolio?.totalEquity) ? 100000 : (portfolio?.totalEquity ?? 100000)
+  const totalTrades = portfolio?.totalTrades ?? 0
+  const totalFees = isNaN(portfolio?.totalFees) ? 0 : (portfolio?.totalFees ?? 0)
+  const totalSpread = isNaN(portfolio?.totalSpread) ? 0 : (portfolio?.totalSpread ?? 0)
+  const totalSlippage = isNaN(portfolio?.totalSlippage) ? 0 : (portfolio?.totalSlippage ?? 0)
 
   // Margin status display config
   const marginStatusConfig = {
@@ -93,9 +72,10 @@ export function Sidebar({ isConnected }: SidebarProps) {
     },
   }
   
-  const marginStatus = marginHealth?.overall_status || 'safe'
+  const marginStatus = marginHealth?.overall_status ?? 'safe'
   const marginConfig = marginStatusConfig[marginStatus]
-  const atRiskCount = (marginHealth?.summary.positions_warning || 0) + (marginHealth?.summary.positions_danger || 0)
+  const atRiskCount = (marginHealth?.positions_warning ?? 0) + (marginHealth?.positions_danger ?? 0)
+  const totalPositions = marginHealth?.total_positions ?? 0
 
   return (
     <motion.aside
@@ -115,8 +95,11 @@ export function Sidebar({ isConnected }: SidebarProps) {
             <Zap className="w-5 h-5 text-void" />
           </div>
           <div>
-            <h1 className="font-semibold text-text-primary tracking-tight text-sm">I Need A Dollar</h1>
+            <h1 className="font-semibold text-text-primary tracking-tight text-sm whitespace-nowrap">I Need A Dollar</h1>
             <p className="text-[10px] text-text-muted uppercase tracking-widest">AI Trading Terminal</p>
+            <span className="px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide bg-gradient-to-r from-purple-500/20 to-violet-500/20 text-purple-400 border border-purple-500/40 rounded inline-block mt-0.5">
+              Crypto-Edition
+            </span>
           </div>
         </motion.div>
         
@@ -151,7 +134,7 @@ export function Sidebar({ isConnected }: SidebarProps) {
         <Link href="/risk" className="block">
           <div className={clsx(
             'flex items-center gap-2 transition-opacity',
-            marginHealth?.summary.total_positions === 0 && 'opacity-50'
+            totalPositions === 0 && 'opacity-50'
           )}>
             <div className={clsx('w-2 h-2 rounded-full', marginConfig.dotClass)} />
             <AnimatePresence mode="wait">
@@ -163,7 +146,7 @@ export function Sidebar({ isConnected }: SidebarProps) {
                   className="flex items-center gap-1.5"
                 >
                   <span className={clsx('text-xs font-medium uppercase tracking-wider', marginConfig.textClass)}>
-                    {marginHealth?.summary.total_positions === 0 ? 'No Positions' : marginConfig.label}
+                    {totalPositions === 0 ? 'No Positions' : `${totalPositions} Position${totalPositions > 1 ? 's' : ''}`}
                   </span>
                   {atRiskCount > 0 && (
                     <span className={clsx(
@@ -245,7 +228,7 @@ export function Sidebar({ isConnected }: SidebarProps) {
                 'text-xl font-mono font-semibold',
                 pnl >= 0 ? 'text-text-primary' : 'text-accent-red'
               )}>
-                ${portfolio.totalEquity.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                ${totalEquity.toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </p>
               <p className={clsx(
                 'text-xs font-mono mt-1',
@@ -269,19 +252,19 @@ export function Sidebar({ isConnected }: SidebarProps) {
               <div className="glass-card p-3">
                 <span className="text-label block mb-1">Trades</span>
                 <p className="text-sm font-mono font-semibold text-text-primary">
-                  {portfolio.totalTrades}
+                  {totalTrades}
                 </p>
               </div>
               <div className="glass-card p-3">
                 <span className="text-label block mb-1">Fees</span>
                 <p className="text-sm font-mono font-semibold text-accent-amber">
-                  ${portfolio.totalFees.toFixed(2)}
+                  ${totalFees.toFixed(2)}
                 </p>
               </div>
               <div className="glass-card p-3">
                 <span className="text-label block mb-1">Slippage</span>
                 <p className="text-sm font-mono font-semibold text-accent-amber">
-                  ${(portfolio.totalSpread + portfolio.totalSlippage).toFixed(2)}
+                  ${(totalSpread + totalSlippage).toFixed(2)}
                 </p>
               </div>
             </div>

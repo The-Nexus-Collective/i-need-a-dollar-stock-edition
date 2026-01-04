@@ -1,7 +1,54 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
 
 interface FetchOptions extends RequestInit {
   token?: string
+}
+
+// Ledger entry for expandable transaction detail
+interface LedgerEntry {
+  id: number
+  transactionId: string
+  timestamp: string
+  transactionType: 'OPEN' | 'CLOSE' | 'EXTEND' | 'REDUCE' | 'RESET' | 'FEE' | 'MARGIN_CALL'
+  positionId: string | null
+  account: 'CASH' | 'POSITIONS' | 'REALIZED_PNL' | 'TRADING_COSTS' | 'STARTING_CAPITAL'
+  debit: number
+  credit: number
+  runningBalance: number | null
+  description: string | null
+  isDebit: boolean
+  accountDisplay: string
+  netEffect: number
+}
+
+// Transaction DTO from backend
+interface Transaction {
+  transactionId: string
+  timestamp: string
+  transactionType: 'OPEN' | 'CLOSE' | 'EXTEND' | 'REDUCE' | 'RESET' | 'MARGIN_CALL'
+  transactionTypeDisplay: string
+  positionId: string | null
+  symbol: string | null
+  direction: string | null
+  price: number | null
+  quantity: number | null
+  sizeUsdt: number | null
+  leverage: number | null
+  conviction: number | null
+  reason: string | null
+  fee: number
+  spread: number
+  slippage: number
+  totalCosts: number
+  grossPnl: number
+  netPnl: number
+  pnlPercent: number
+  positionSizeBefore: number | null
+  positionSizeAfter: number | null
+  avgEntryBefore: number | null
+  avgEntryAfter: number | null
+  ledgerEntries: LedgerEntry[] | null
+  ledgerEntryCount: number
 }
 
 class ApiClient {
@@ -118,7 +165,7 @@ class ApiClient {
     }>>(`/api/positions?status=${status}`)
   }
 
-  // Trades
+  // Trades (legacy - use getTransactions instead)
   async getTrades(limit = 100) {
     return this.fetch<Array<{
       id: string
@@ -133,6 +180,112 @@ class ApiClient {
       executed_at: string
       created_at: string
     }>>(`/api/trades?limit=${limit}`)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TRANSACTIONS - Unified history from accounting ledger
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Get transactions for history page
+  async getTransactions(limit = 100, transactionType?: string, includeLedger = false) {
+    const params = new URLSearchParams({ limit: String(limit) })
+    if (transactionType) {
+      params.append('type', transactionType)
+    }
+    if (includeLedger) {
+      params.append('include_ledger', 'true')
+    }
+    return this.fetch<Transaction[]>(`/api/transactions?${params.toString()}`)
+  }
+
+  // Get single transaction with full ledger detail
+  async getTransactionDetail(transactionId: string) {
+    return this.fetch<Transaction>(`/api/transactions/${transactionId}`)
+  }
+
+  // Get transactions for a specific position (lifecycle view)
+  async getPositionTransactions(positionId: string, includeLedger = false) {
+    const params = new URLSearchParams()
+    if (includeLedger) {
+      params.append('include_ledger', 'true')
+    }
+    return this.fetch<Transaction[]>(`/api/transactions/position/${positionId}?${params.toString()}`)
+  }
+
+  // Get transaction summary statistics
+  async getTransactionSummary() {
+    return this.fetch<{
+      totalTransactions: number
+      openCount: number
+      closeCount: number
+      extendCount: number
+      reduceCount: number
+      totalFees: number
+      totalPnl: number
+    }>('/api/transactions/summary')
+  }
+
+  // Export transactions to CSV
+  async exportTransactions(limit = 0, transactionType?: string) {
+    const params = new URLSearchParams({ format: 'csv' })
+    if (limit > 0) {
+      params.append('limit', String(limit))
+    }
+    if (transactionType) {
+      params.append('type', transactionType)
+    }
+    const response = await fetch(`${this.baseUrl}/api/transactions/export?${params.toString()}`)
+    if (!response.ok) {
+      throw new Error(`Export failed: ${response.status}`)
+    }
+    return response.blob()
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ACCOUNTING - Account balances and reconciliation
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Get account balances from accounting ledger
+  async getAccountBalances() {
+    return this.fetch<{
+      cash: number
+      positions: number
+      realizedPnl: number
+      tradingCosts: number
+      startingCapital: number
+      bookEquity: number
+      initialized: boolean
+    }>('/api/accounting/balances')
+  }
+
+  // Get reconciliation report
+  async getReconciliation() {
+    return this.fetch<{
+      balanced: boolean
+      timestamp: string
+      totalDebits: number
+      totalCredits: number
+      imbalance: number
+      accountBalances: Record<string, number>
+      calculatedEquity: number
+      expectedEquity: number
+      discrepancies: string[]
+      totalEntries: number
+      totalTransactions: number
+    }>('/api/accounting/reconcile')
+  }
+
+  // Get accounting health check
+  async getAccountingHealth() {
+    return this.fetch<{
+      status: 'HEALTHY' | 'UNHEALTHY'
+      initialized: boolean
+      balanced: boolean
+      totalEntries: number
+      cash: number
+      positions: number
+      discrepancies?: string[]
+    }>('/api/accounting/health')
   }
 
   // Signals
@@ -458,80 +611,6 @@ class ApiClient {
     }>>(`/api/stocks/hype?symbols=${encodeURIComponent(symbols)}`)
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // SWARM ENDPOINTS
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  async getSwarmStatus() {
-    return this.fetch<{
-      running: boolean
-      started_at: string | null
-      agent_count: number
-      agents: Array<{
-        id: string
-        name: string
-        emoji: string
-        role: string
-        running: boolean
-        energy: number
-        beliefs_count: number
-        hypotheses_count: number
-        last_perception: string | null
-        pending_signals: number
-      }>
-      signal_network: {
-        active_agents: number
-        recent_signals: number
-      }
-      memory: {
-        cached_memories: number
-      }
-    }>('/ws/swarm/status')
-  }
-
-  async getAgentLogs(params: {
-    limit?: number
-    agent_name?: string
-    action_type?: string
-  } = {}) {
-    const searchParams = new URLSearchParams()
-    if (params.limit) searchParams.set('limit', params.limit.toString())
-    if (params.agent_name) searchParams.set('agent_name', params.agent_name)
-    if (params.action_type) searchParams.set('action_type', params.action_type)
-    
-    return this.fetch<Array<{
-      id: string
-      timestamp: string
-      cycle_id: string
-      agent_name: string
-      action_type: string
-      reasoning: string
-      decision: string
-      confidence: number | null
-      duration_ms: number
-      tokens_used: number
-      persona: {
-        name: string
-        emoji: string
-        role: string
-        personality: string
-      }
-      narrative: string
-    }>>(`/api/agents/logs?${searchParams}`)
-  }
-
-  async getAgentCycles(limit: number = 20) {
-    return this.fetch<Array<{
-      cycle_id: string
-      start_time: string
-      end_time: string
-      log_count: number
-      agents_involved: number
-      total_tokens: number
-      avg_confidence: number | null
-    }>>(`/api/agents/cycles?limit=${limit}`)
-  }
-
   async getUniverse(status: string = 'approved', limit: number = 100) {
     return this.fetch<Array<{
       coin: string
@@ -701,6 +780,94 @@ class ApiClient {
     }>('/api/paper-trades/reset', {
       method: 'DELETE',
     })
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PORTFOLIO MANAGER
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async triggerCycle() {
+    return this.fetch<{
+      status: string
+      message: string
+      cycle_number: number
+    }>('/api/portfolio-manager/cycle', { method: 'POST' })
+  }
+
+  async getPortfolioManagerStatus() {
+    return this.fetch<{
+      running: boolean
+      phase: string
+      cycle_count: number
+      cycle_interval_seconds: number
+      mode: string
+      portfolio: {
+        positions: Array<{
+          id: string
+          symbol: string
+          direction: string
+          entry_price: number
+          current_price: number
+          quantity: number
+          size_usdt: number
+          leverage: number
+          conviction: number
+          unrealized_pnl: number
+          unrealized_pnl_pct: number
+          liquidation_price: number
+          margin_risk_pct: number
+          opened_at: string
+          reason: string
+        }>
+        statistics: {
+          starting_capital: number
+          current_capital: number
+          total_equity: number
+          unrealized_pnl: number
+          realized_pnl: number
+          total_pnl: number
+          open_positions: number
+          max_positions: number
+          available_slots: number
+          total_trades: number
+          winning_trades: number
+          losing_trades: number
+          win_rate: number
+          total_fees: number
+          total_spread: number
+          total_slippage: number
+          transactions: {
+            total: number
+            open: number
+            close: number
+            extend: number
+            reduce: number
+          }
+          deployment: {
+            total_deployed: number
+            deployment_ratio: number
+            deployment_percent: number
+            below_minimum: boolean
+            capital_to_deploy: number
+          }
+        }
+      }
+      logbook: {
+        total_entries: number
+        total_cycles: number
+        total_tokens_used: number
+        total_positions_closed: number
+        total_positions_opened: number
+        oldest_entry: string
+        newest_entry: string
+      }
+      snapshot_service: {
+        running: boolean
+        snapshot_count: number
+        interval_seconds: number
+      }
+      db_restored: boolean
+    }>('/api/portfolio-manager/status')
   }
 }
 

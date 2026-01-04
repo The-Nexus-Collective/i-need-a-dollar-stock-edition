@@ -1,0 +1,100 @@
+spring:
+  application:
+    name: trading-platform
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/trading}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+    enabled: true
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    default-property-inclusion: non_null
+
+server:
+  port: ${API_PORT:8080}
+
+# Application Configuration
+trading:
+  mode: ${MODE:paper}
+  cycle:
+    interval: ${CYCLE_INTERVAL:600000}  # 10 minutes in milliseconds
+  position:
+    size-percent: ${POSITION_SIZE_PCT:0.02}
+    max-positions: ${MAX_POSITIONS:50}
+  deployment:
+    min-ratio: ${MIN_DEPLOYMENT_RATIO:0.75}
+    max-ratio: ${MAX_DEPLOYMENT_RATIO:0.90}
+  capital:
+    starting: ${STARTING_CAPITAL:100000}
+  margin:
+    enabled: ${MARGIN_MONITORING_ENABLED:true}
+    warning-threshold: ${MARGIN_WARNING_THRESHOLD:5.0}   # Warn at 5% distance to liquidation
+    critical-threshold: ${MARGIN_CRITICAL_THRESHOLD:2.0} # Critical at 2% distance
+
+# External APIs
+binance:
+  api-key: ${BINANCE_API_KEY:}
+  api-secret: ${BINANCE_API_SECRET:}
+  futures-base-url: https://fapi.binance.com
+  websocket-url: wss://fstream.binance.com/ws
+
+xai:
+  api-key: ${XAI_API_KEY:}
+  base-url: https://api.x.ai/v1
+  model: ${XAI_MODEL:grok-4-1-fast-reasoning}  # Latest Grok model with fast reasoning
+
+# CORS Configuration
+cors:
+  allowed-origins: ${CORS_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
+  allow-all: ${CORS_ALLOW_ALL:false}
+
+# Actuator endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when_authorized
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.trading: DEBUG
+    org.springframework.web.socket: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} | %-5level | %logger{36} | %msg%n"
+
+---
+# Development Profile
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  jpa:
+    show-sql: false
+
+logging:
+  level:
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql: WARN
+
