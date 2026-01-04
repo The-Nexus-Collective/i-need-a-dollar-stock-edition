@@ -160,6 +160,7 @@ class TradingLoop:
     async def _broadcast_phase(self, phase: str, next_cycle_at: float = None, progress_current: int = None, progress_total: int = None):
         """Broadcast current phase to connected clients."""
         self._current_phase = phase
+        logger.info(f"📡 Phase change: {phase}")
         try:
             # Broadcast to both realtime WebSocket and equity WebSocket
             from gateway.realtime import broadcast_phase
@@ -168,7 +169,7 @@ class TradingLoop:
             await broadcast_phase(phase, next_cycle_at, self._cycle_count, progress_current, progress_total)
             await broadcast_phase_to_equity_ws(phase, next_cycle_at, self._cycle_count, progress_current, progress_total)
         except Exception as e:
-            logger.debug(f"Could not broadcast phase: {e}")
+            logger.warning(f"Could not broadcast phase: {e}")
     
     async def run_cycle(self):
         """Run a single prediction/trading cycle."""

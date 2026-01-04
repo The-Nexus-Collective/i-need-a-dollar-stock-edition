@@ -1957,6 +1957,10 @@ async def broadcast_phase_to_equity_ws(phase: str, next_cycle_at: float = None, 
         message["progress_total"] = progress_total
     
     async with _equity_ws_lock:
+        num_clients = len(_equity_websockets)
+        if num_clients > 0:
+            logger.info(f"Broadcasting phase '{phase}' to {num_clients} equity WS clients")
+        
         dead_connections = set()
         for ws in _equity_websockets:
             try:
