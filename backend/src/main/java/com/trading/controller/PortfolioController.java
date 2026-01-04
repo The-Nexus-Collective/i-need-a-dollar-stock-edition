@@ -37,6 +37,9 @@ public class PortfolioController {
     @Value("${trading.position.max-positions:50}")
     private int maxPositions;
 
+    @Value("${trading.deployment.min-ratio:0.75}")
+    private BigDecimal minDeploymentRatio;
+
     @GetMapping("/portfolio")
     public PortfolioResponse getPortfolio() {
         return portfolioService.getPortfolio();
@@ -59,29 +62,52 @@ public class PortfolioController {
     public Map<String, Object> getPortfolioManagerStatus() {
         PortfolioResponse portfolio = portfolioService.getPortfolio();
         
-        // Return format expected by frontend: portfolio.statistics and portfolio.positions
-        Map<String, Object> statistics = Map.ofEntries(
-                Map.entry("starting_capital", portfolio.getInitialCapital()),
-                Map.entry("current_capital", portfolio.getCash()),
-                Map.entry("total_equity", portfolio.getTotalEquity()),
-                Map.entry("unrealized_pnl", portfolio.getUnrealizedPnl()),
-                Map.entry("realized_pnl", portfolio.getRealizedPnl()),
-                Map.entry("total_pnl", portfolio.getTotalPnl()),
-                Map.entry("open_positions", portfolio.getOpenPositions()),
-                Map.entry("max_positions", maxPositions),
-                Map.entry("available_slots", maxPositions - portfolio.getOpenPositions()),
-                Map.entry("total_trades", portfolio.getTotalTrades()),
-                Map.entry("winning_trades", portfolio.getWinningTrades()),
-                Map.entry("losing_trades", portfolio.getLosingTrades()),
-                Map.entry("win_rate", portfolio.getWinRate()),
-                Map.entry("total_fees", portfolio.getTotalFees()),
-                Map.entry("total_spread", portfolio.getTotalSpread()),
-                Map.entry("total_slippage", portfolio.getTotalSlippage())
-        );
-        
         // Get actual open positions
         List<PositionDTO> openPositions = positionService.getOpenPositions();
         log.info("getPortfolioManagerStatus: Found {} open positions", openPositions.size());
+        
+        // Calculate deployment metrics
+        BigDecimal totalDeployed = openPositions.stream()
+                .map(PositionDTO::getSizeUsdt)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalEquity = portfolio.getTotalEquity();
+        BigDecimal deploymentRatio = totalEquity.compareTo(BigDecimal.ZERO) > 0
+                ? totalDeployed.divide(totalEquity, 4, java.math.RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+        BigDecimal deploymentPercent = deploymentRatio.multiply(BigDecimal.valueOf(100));
+        boolean belowMinimum = deploymentRatio.compareTo(minDeploymentRatio) < 0;
+        BigDecimal capitalToDeploy = belowMinimum 
+                ? totalEquity.multiply(minDeploymentRatio).subtract(totalDeployed)
+                : BigDecimal.ZERO;
+        
+        // Build deployment object
+        Map<String, Object> deployment = Map.of(
+                "total_deployed", totalDeployed,
+                "deployment_ratio", deploymentRatio,
+                "deployment_percent", deploymentPercent,
+                "below_minimum", belowMinimum,
+                "capital_to_deploy", capitalToDeploy
+        );
+        
+        // Return format expected by frontend: portfolio.statistics and portfolio.positions
+        Map<String, Object> statistics = new HashMap<>();
+        statistics.put("starting_capital", portfolio.getInitialCapital());
+        statistics.put("current_capital", portfolio.getCash());
+        statistics.put("total_equity", portfolio.getTotalEquity());
+        statistics.put("unrealized_pnl", portfolio.getUnrealizedPnl());
+        statistics.put("realized_pnl", portfolio.getRealizedPnl());
+        statistics.put("total_pnl", portfolio.getTotalPnl());
+        statistics.put("open_positions", portfolio.getOpenPositions());
+        statistics.put("max_positions", maxPositions);
+        statistics.put("available_slots", maxPositions - portfolio.getOpenPositions());
+        statistics.put("total_trades", portfolio.getTotalTrades());
+        statistics.put("winning_trades", portfolio.getWinningTrades());
+        statistics.put("losing_trades", portfolio.getLosingTrades());
+        statistics.put("win_rate", portfolio.getWinRate());
+        statistics.put("total_fees", portfolio.getTotalFees());
+        statistics.put("total_spread", portfolio.getTotalSpread());
+        statistics.put("total_slippage", portfolio.getTotalSlippage());
+        statistics.put("deployment", deployment);
         
         Map<String, Object> portfolioData = new HashMap<>();
         portfolioData.put("positions", openPositions);
