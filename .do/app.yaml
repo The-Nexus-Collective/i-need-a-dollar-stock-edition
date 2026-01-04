@@ -107,5 +107,6 @@ services:
 databases:
   - name: db
     engine: PG
+    cluster_name: i-need-a-dollar-crypto-edition-db
     production: true
 
