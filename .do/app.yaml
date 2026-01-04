@@ -68,9 +68,6 @@ services:
       - key: CORS_ALLOW_ALL
         scope: RUN_TIME
         value: "true"
-      - key: XAI_API_KEY
-        scope: RUN_TIME
-        type: SECRET
     routes:
       - path: /api
       - path: /ws
