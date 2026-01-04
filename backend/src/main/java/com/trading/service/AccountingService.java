@@ -9,6 +9,7 @@ import com.trading.entity.enums.TransactionType;
 import com.trading.repository.LedgerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +37,16 @@ public class AccountingService {
     
     @Value("${trading.starting-capital:100000}")
     private BigDecimal startingCapital;
+    
+    @PostConstruct
+    public void init() {
+        if (!isInitialized()) {
+            log.info("Ledger not initialized - initializing with starting capital: {}", startingCapital);
+            recordReset(startingCapital);
+        } else {
+            log.info("Ledger already initialized. Cash balance: {}", getCashBalance());
+        }
+    }
     
     // ========== TRANSACTION RECORDING ==========
     
