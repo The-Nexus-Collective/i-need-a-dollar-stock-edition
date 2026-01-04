@@ -36,6 +36,8 @@ public class GrokService {
 
     private static final int TIMEOUT_SECONDS = 120;
     private static final int MAX_TOKENS = 8000;
+    private static final int MAX_RETRY_ATTEMPTS = 3;
+    private static final int RETRY_DELAY_MS = 3000;
 
     @Value("${xai.api-key:}")
     private String apiKey;
@@ -65,7 +67,7 @@ public class GrokService {
     }
 
     /**
-     * Run comprehensive portfolio analysis.
+     * Run comprehensive portfolio analysis with automatic retry on empty results.
      *
      * @param positionsContext Formatted string of current positions with risk info
      * @param availableSlots   Number of slots available for new positions
@@ -75,6 +77,14 @@ public class GrokService {
      */
     public AnalysisResult analyze(String positionsContext, int availableSlots, 
                                    String deploymentInfo, BigDecimal availableCapital) {
+        return analyzeWithRetry(positionsContext, availableSlots, deploymentInfo, availableCapital, 1);
+    }
+
+    /**
+     * Internal method that performs analysis with retry logic for empty responses.
+     */
+    private AnalysisResult analyzeWithRetry(String positionsContext, int availableSlots,
+                                            String deploymentInfo, BigDecimal availableCapital, int attempt) {
         
         String prompt = buildPrompt(positionsContext, availableSlots, deploymentInfo);
         String systemPrompt = getSystemPrompt();
@@ -86,7 +96,7 @@ public class GrokService {
         }
 
         try {
-            log.info("Sending request to Grok API (model: {})...", model);
+            log.info("Sending request to Grok API (model: {}, attempt {}/{})...", model, attempt, MAX_RETRY_ATTEMPTS);
 
             Map<String, Object> request = new LinkedHashMap<>();
             request.put("model", model);
@@ -113,6 +123,28 @@ public class GrokService {
                     result.getPositionDecisions().size(),
                     result.getNewOpportunities().size());
 
+            // Check if response is empty and retry if needed
+            if (isEmptyAnalysis(result) && attempt < MAX_RETRY_ATTEMPTS) {
+                String responsePreview = result.getRawResponse() != null 
+                    ? result.getRawResponse().substring(0, Math.min(300, result.getRawResponse().length()))
+                    : "null";
+                log.warn("Grok returned empty analysis (attempt {}/{}). Response preview: {}", 
+                         attempt, MAX_RETRY_ATTEMPTS, responsePreview);
+                
+                try {
+                    Thread.sleep(RETRY_DELAY_MS);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+                
+                return analyzeWithRetry(positionsContext, availableSlots, deploymentInfo, availableCapital, attempt + 1);
+            }
+
+            if (isEmptyAnalysis(result)) {
+                log.warn("Grok returned empty analysis after {} attempts. Final response: {}", 
+                         attempt, result.getRawResponse());
+            }
+
             return result;
 
         } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
@@ -122,6 +154,15 @@ public class GrokService {
             log.error("Grok analysis failed: {}", e.getMessage(), e);
             return AnalysisResult.error(e.getMessage(), fullPrompt, "");
         }
+    }
+
+    /**
+     * Check if the analysis result is empty (no coins analyzed and no decisions).
+     */
+    private boolean isEmptyAnalysis(AnalysisResult result) {
+        return result.getCoinsAnalyzed() == 0 
+            && result.getNewOpportunities().isEmpty() 
+            && result.getPositionDecisions().isEmpty();
     }
 
     private String getSystemPrompt() {
