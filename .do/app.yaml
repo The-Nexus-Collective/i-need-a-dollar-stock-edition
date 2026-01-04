@@ -60,6 +60,11 @@ services:
       - key: CORS_ALLOW_ALL
         scope: RUN_TIME
         value: "true"
+      # XAI_API_KEY must be set in DO Console as a secret
+      # This reference ensures the service receives the global secret
+      - key: XAI_API_KEY
+        scope: RUN_TIME
+        type: SECRET
     routes:
       - path: /api
         preserve_path_prefix: true
