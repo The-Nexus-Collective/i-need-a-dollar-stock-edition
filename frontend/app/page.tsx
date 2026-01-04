@@ -14,6 +14,9 @@ import {
   BarChart3,
   LineChart,
   Wallet,
+  Download,
+  Brain,
+  Loader2,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -384,6 +387,12 @@ export default function Dashboard() {
   const [equityData, setEquityData] = useState<EquityPoint[]>([])
   const [wsConnected, setWsConnected] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
+  
+  // Phase tracking state
+  const [currentPhase, setCurrentPhase] = useState<'idle' | 'fetching' | 'analyzing' | 'trading'>('idle')
+  const [nextCycleAt, setNextCycleAt] = useState<number | null>(null)
+  const [cycleNumber, setCycleNumber] = useState<number>(0)
+  const [countdown, setCountdown] = useState<string>('')
 
   // WebSocket connection for real-time equity updates
   useEffect(() => {
@@ -408,6 +417,17 @@ export default function Dashboard() {
                 // Keep last 120 seconds (2 minutes)
                 return newData.slice(-120)
               })
+            }
+            
+            // Handle phase updates
+            if (message.type === 'phase') {
+              setCurrentPhase(message.phase)
+              if (message.next_cycle_at) {
+                setNextCycleAt(message.next_cycle_at)
+              }
+              if (message.cycle_number) {
+                setCycleNumber(message.cycle_number)
+              }
             }
             
             // Handle paper trades reset - clear equity data
@@ -445,6 +465,33 @@ export default function Dashboard() {
       }
     }
   }, [])
+
+  // Countdown timer effect
+  useEffect(() => {
+    if (currentPhase !== 'idle' || !nextCycleAt) {
+      setCountdown('')
+      return
+    }
+    
+    const updateCountdown = () => {
+      const now = Date.now() / 1000
+      const remaining = Math.max(0, nextCycleAt - now)
+      
+      if (remaining <= 0) {
+        setCountdown('')
+        return
+      }
+      
+      const minutes = Math.floor(remaining / 60)
+      const seconds = Math.floor(remaining % 60)
+      setCountdown(`${minutes}:${seconds.toString().padStart(2, '0')}`)
+    }
+    
+    updateCountdown()
+    const interval = setInterval(updateCountdown, 1000)
+    
+    return () => clearInterval(interval)
+  }, [currentPhase, nextCycleAt])
 
   // Fetch data
   useEffect(() => {
@@ -522,14 +569,48 @@ export default function Dashboard() {
               className="text-2xl font-semibold text-text-primary tracking-tight flex items-center gap-3"
             >
               🎯 Prediction Trader
-              <span className={clsx(
-                'px-2 py-0.5 text-xs font-bold rounded border',
-                status?.running 
-                  ? 'bg-accent-emerald/20 text-accent-emerald border-accent-emerald/40'
-                  : 'bg-accent-amber/20 text-accent-amber border-accent-amber/40'
-              )}>
-                {status?.running ? 'RUNNING' : 'IDLE'}
-              </span>
+              {/* Dynamic Phase Indicator */}
+              <AnimatePresence mode="wait">
+                <motion.span 
+                  key={currentPhase}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ duration: 0.2 }}
+                  className={clsx(
+                    'px-2 py-0.5 text-xs font-bold rounded border flex items-center gap-1.5',
+                    currentPhase === 'idle' && 'bg-slate-500/20 text-slate-400 border-slate-500/40',
+                    currentPhase === 'fetching' && 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40',
+                    currentPhase === 'analyzing' && 'bg-purple-500/20 text-purple-400 border-purple-500/40',
+                    currentPhase === 'trading' && 'bg-accent-emerald/20 text-accent-emerald border-accent-emerald/40',
+                  )}
+                >
+                  {currentPhase === 'idle' && (
+                    <>
+                      <Clock className="w-3 h-3" />
+                      {countdown ? `NEXT: ${countdown}` : 'IDLE'}
+                    </>
+                  )}
+                  {currentPhase === 'fetching' && (
+                    <>
+                      <Download className="w-3 h-3 animate-bounce" />
+                      FETCHING DATA
+                    </>
+                  )}
+                  {currentPhase === 'analyzing' && (
+                    <>
+                      <Brain className="w-3 h-3 animate-pulse" />
+                      AI ANALYZING
+                    </>
+                  )}
+                  {currentPhase === 'trading' && (
+                    <>
+                      <Zap className="w-3 h-3 animate-pulse" />
+                      TRADING
+                    </>
+                  )}
+                </motion.span>
+              </AnimatePresence>
               <span className="px-2 py-0.5 text-xs font-bold bg-purple-500/20 text-purple-400 rounded border border-purple-500/40">
                 {status?.mode?.toUpperCase() || 'PAPER'}
               </span>

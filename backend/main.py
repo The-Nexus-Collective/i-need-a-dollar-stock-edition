@@ -155,6 +155,20 @@ class TradingLoop:
         self._cycle_count = 0
         self._ws = None
         self._equity_tracker = None
+        self._current_phase = "idle"  # idle, fetching, analyzing, trading
+    
+    async def _broadcast_phase(self, phase: str, next_cycle_at: float = None):
+        """Broadcast current phase to connected clients."""
+        self._current_phase = phase
+        try:
+            # Broadcast to both realtime WebSocket and equity WebSocket
+            from gateway.realtime import broadcast_phase
+            from gateway.main import broadcast_phase_to_equity_ws
+            
+            await broadcast_phase(phase, next_cycle_at, self._cycle_count)
+            await broadcast_phase_to_equity_ws(phase, next_cycle_at, self._cycle_count)
+        except Exception as e:
+            logger.debug(f"Could not broadcast phase: {e}")
     
     async def run_cycle(self):
         """Run a single prediction/trading cycle."""
@@ -168,6 +182,7 @@ class TradingLoop:
         
         try:
             # Step 1: Get top coins by market cap
+            await self._broadcast_phase("fetching")
             logger.info(f"Fetching top {TOP_COINS_COUNT} coins by market cap...")
             coins = await self.binance.get_top_coins_by_market_cap(TOP_COINS_COUNT)
             logger.info(f"Top coins: {', '.join(coins)}")
@@ -178,6 +193,7 @@ class TradingLoop:
                 self._ws.add_symbols(symbols)
             
             # Step 2: Get predictions from Grok
+            await self._broadcast_phase("analyzing")
             logger.info("Getting predictions from Grok...")
             predictions = await self.predictor.predict_all(coins)
             
@@ -189,6 +205,7 @@ class TradingLoop:
                 )
             
             # Step 3: Execute trades (smart cycle - only close on sentiment change)
+            await self._broadcast_phase("trading")
             logger.info("Executing smart trades...")
             result = await self.executor.execute_cycle_smart(predictions)
             
@@ -201,6 +218,7 @@ class TradingLoop:
             
         except Exception as e:
             logger.error(f"Cycle failed: {e}", exc_info=True)
+            await self._broadcast_phase("idle")  # Reset to idle on error
             return None
     
     async def run(self):
@@ -247,6 +265,11 @@ class TradingLoop:
                 if not self._running:
                     break
                 
+                # Broadcast idle phase with next cycle timestamp
+                import time
+                next_cycle_at = time.time() + CYCLE_INTERVAL_SECONDS
+                await self._broadcast_phase("idle", next_cycle_at)
+                
                 # Wait for next cycle
                 logger.info(f"Next cycle in {CYCLE_INTERVAL_SECONDS//60} minutes...")
                 
@@ -258,6 +281,7 @@ class TradingLoop:
                     
             except Exception as e:
                 logger.error(f"Error in trading loop: {e}", exc_info=True)
+                await self._broadcast_phase("idle")
                 await asyncio.sleep(60)  # Wait a minute before retrying
         
         logger.info("Trading loop stopped")

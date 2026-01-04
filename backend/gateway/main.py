@@ -1932,6 +1932,36 @@ async def broadcast_equity_reset():
             _equity_websockets.discard(ws)
 
 
+async def broadcast_phase_to_equity_ws(phase: str, next_cycle_at: float = None, cycle_number: int = None):
+    """
+    Broadcast phase update to all equity WebSocket connections.
+    
+    This allows the dashboard to show real-time phase updates.
+    """
+    message = {
+        "type": "phase",
+        "phase": phase,
+        "timestamp": datetime.utcnow().timestamp(),
+    }
+    
+    if next_cycle_at is not None:
+        message["next_cycle_at"] = next_cycle_at
+    
+    if cycle_number is not None:
+        message["cycle_number"] = cycle_number
+    
+    async with _equity_ws_lock:
+        dead_connections = set()
+        for ws in _equity_websockets:
+            try:
+                await ws.send_json(message)
+            except Exception:
+                dead_connections.add(ws)
+        
+        for ws in dead_connections:
+            _equity_websockets.discard(ws)
+
+
 @app.websocket("/ws/equity")
 async def websocket_equity_stream(websocket: WebSocket):
     """
@@ -1958,6 +1988,21 @@ async def websocket_equity_stream(websocket: WebSocket):
             "type": "connected",
             "timestamp": datetime.utcnow().isoformat()
         })
+        
+        # Send current phase if available
+        try:
+            from trading_state import get_trading_loop
+            trading_loop = get_trading_loop()
+            if trading_loop and hasattr(trading_loop, '_current_phase'):
+                phase_msg = {
+                    "type": "phase",
+                    "phase": trading_loop._current_phase,
+                    "timestamp": datetime.utcnow().timestamp(),
+                    "cycle_number": trading_loop._cycle_count
+                }
+                await websocket.send_json(phase_msg)
+        except Exception as e:
+            logger.debug(f"Could not send initial phase: {e}")
         
         # Send equity updates every second
         while True:

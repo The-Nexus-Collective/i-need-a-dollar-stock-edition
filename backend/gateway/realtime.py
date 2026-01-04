@@ -228,6 +228,30 @@ async def broadcast_status(status: str, message: str):
     })
 
 
+async def broadcast_phase(phase: str, next_cycle_at: float = None, cycle_number: int = None):
+    """
+    Broadcast trading loop phase update.
+    
+    Args:
+        phase: Current phase - 'idle', 'fetching', 'analyzing', 'trading'
+        next_cycle_at: Unix timestamp of next cycle (only for idle phase)
+        cycle_number: Current cycle number
+    """
+    message = {
+        "type": "phase",
+        "phase": phase,
+        "timestamp": datetime.utcnow().timestamp(),
+    }
+    
+    if next_cycle_at is not None:
+        message["next_cycle_at"] = next_cycle_at
+    
+    if cycle_number is not None:
+        message["cycle_number"] = cycle_number
+    
+    await manager.broadcast(message)
+
+
 def get_connection_manager() -> ConnectionManager:
     """Get the global connection manager"""
     return manager
