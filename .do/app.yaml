@@ -70,9 +70,13 @@ services:
         value: "true"
     routes:
       - path: /api
+        preserve_path_prefix: true
       - path: /ws
+        preserve_path_prefix: true
       - path: /docs
+        preserve_path_prefix: true
       - path: /health
+        preserve_path_prefix: true
     health_check:
       http_path: /health
       initial_delay_seconds: 30
