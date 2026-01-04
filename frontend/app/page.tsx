@@ -70,6 +70,11 @@ interface TraderStatus {
     total_slippage_cost?: number
     total_trading_costs?: number
   }
+  equity?: {
+    total_equity: number
+    unrealized_pnl: number
+    cash: number
+  }
   top_coins_count: number
   cycle_interval_seconds: number
   mode: string
