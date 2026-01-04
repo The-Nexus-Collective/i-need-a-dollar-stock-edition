@@ -105,6 +105,11 @@ class Predictor:
         self.api_key = os.getenv("XAI_API_KEY", "")
         self._client: Optional[httpx.AsyncClient] = None
         
+        # Debug: log available env vars (only keys, not values for security)
+        xai_related = [k for k in os.environ.keys() if 'XAI' in k.upper() or 'API' in k.upper() or 'KEY' in k.upper()]
+        logger.info(f"Available API-related env vars: {xai_related}")
+        logger.info(f"XAI_API_KEY length: {len(self.api_key)} chars")
+        
         if not self.api_key:
             logger.warning("XAI_API_KEY not set - predictions will fail!")
     
