@@ -21,24 +21,18 @@ import { api } from '@/lib/api'
 import { useWebSocket } from '@/lib/websocket'
 import { usePortfolio } from '@/lib/usePortfolio'
 
+// Trade interface matching the API response from /api/trades
 interface Trade {
   id: string
-  position_id: string
-  symbol: string
-  direction: string
-  entry_price: number
-  exit_price: number
+  coin: string
+  side: string
+  order_type: string
   quantity: number
-  size_usdt: number
-  leverage: number
-  pnl_usdt: number
-  pnl_percent: number
-  entry_time: string
-  exit_time: string
-  duration_seconds: number
-  exit_reason: string
-  conviction: number
-  reasoning: string | null
+  price: number
+  fee: number
+  status: string
+  is_paper: boolean
+  executed_at: string
   created_at: string
 }
 
@@ -56,16 +50,9 @@ function formatCurrency(value: number, showSign = false): string {
 }
 
 function TradeRow({ trade, index }: { trade: Trade; index: number }) {
-  const isLong = trade.direction.toUpperCase() === 'LONG'
-  const isProfitable = trade.pnl_usdt >= 0
-  const coin = trade.symbol?.replace('USDT', '') || 'UNKNOWN'
-  
-  // Format duration
-  const formatDuration = (seconds: number) => {
-    if (seconds < 60) return `${seconds}s`
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
-    return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`
-  }
+  const isBuy = trade.side.toLowerCase() === 'buy'
+  const coin = trade.coin || 'UNKNOWN'
+  const totalValue = trade.price * trade.quantity
 
   return (
     <motion.tr
@@ -80,10 +67,10 @@ function TradeRow({ trade, index }: { trade: Trade; index: number }) {
           <Clock className="w-4 h-4 text-text-dim" />
           <div>
             <span className="text-sm text-text-primary font-mono">
-              {new Date(trade.exit_time || trade.created_at).toLocaleTimeString()}
+              {new Date(trade.executed_at || trade.created_at).toLocaleTimeString()}
             </span>
             <p className="text-xs text-text-muted">
-              {new Date(trade.exit_time || trade.created_at).toLocaleDateString()}
+              {new Date(trade.executed_at || trade.created_at).toLocaleDateString()}
             </p>
           </div>
         </div>
@@ -92,56 +79,53 @@ function TradeRow({ trade, index }: { trade: Trade; index: number }) {
       {/* Coin */}
       <td className="py-4 px-4">
         <span className="font-semibold text-text-primary">{coin}</span>
-        <p className="text-xs text-text-muted">{trade.leverage}x leverage</p>
+        <p className="text-xs text-text-muted">{trade.order_type}</p>
       </td>
 
-      {/* Direction */}
+      {/* Side */}
       <td className="py-4 px-4">
         <span className={clsx(
           'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium',
-          isLong ? 'bg-accent-emerald/20 text-accent-emerald' : 'bg-accent-red/20 text-accent-red'
+          isBuy ? 'bg-accent-emerald/20 text-accent-emerald' : 'bg-accent-red/20 text-accent-red'
         )}>
-          {isLong ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-          {trade.direction.toUpperCase()}
+          {isBuy ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+          {trade.side.toUpperCase()}
         </span>
       </td>
 
-      {/* Entry Price */}
+      {/* Price */}
       <td className="py-4 px-4 text-right">
-        <span className="font-mono text-text-primary">{formatCurrency(trade.entry_price)}</span>
+        <span className="font-mono text-text-primary">{formatCurrency(trade.price)}</span>
       </td>
 
-      {/* Exit Price */}
+      {/* Quantity */}
       <td className="py-4 px-4 text-right">
-        <span className="font-mono text-text-primary">{formatCurrency(trade.exit_price)}</span>
+        <span className="font-mono text-text-primary">{trade.quantity.toFixed(4)}</span>
       </td>
 
-      {/* Size */}
+      {/* Total Value */}
       <td className="py-4 px-4 text-right">
-        <span className="font-mono text-text-primary">{formatCurrency(trade.size_usdt)}</span>
-        <p className="text-xs text-text-muted">{trade.quantity.toFixed(4)} qty</p>
+        <span className="font-mono text-text-primary">{formatCurrency(totalValue)}</span>
       </td>
 
-      {/* PnL */}
+      {/* Fee */}
       <td className="py-4 px-4 text-right">
-        <div className={clsx(
-          'font-mono font-semibold',
-          isProfitable ? 'text-accent-emerald' : 'text-accent-red'
+        <span className="font-mono text-text-secondary">{formatCurrency(trade.fee)}</span>
+      </td>
+
+      {/* Status */}
+      <td className="py-4 px-4 text-right">
+        <span className={clsx(
+          'px-2 py-1 rounded text-xs font-medium',
+          trade.status === 'filled' ? 'bg-accent-emerald/20 text-accent-emerald' :
+          trade.status === 'cancelled' ? 'bg-accent-red/20 text-accent-red' :
+          'bg-accent-amber/20 text-accent-amber'
         )}>
-          {formatCurrency(trade.pnl_usdt, true)}
-        </div>
-        <p className={clsx(
-          'text-xs',
-          isProfitable ? 'text-accent-emerald' : 'text-accent-red'
-        )}>
-          {isProfitable ? '+' : ''}{trade.pnl_percent.toFixed(2)}%
-        </p>
-      </td>
-
-      {/* Duration */}
-      <td className="py-4 px-4 text-right">
-        <span className="font-mono text-text-secondary">{formatDuration(trade.duration_seconds)}</span>
-        <p className="text-xs text-text-muted capitalize">{trade.exit_reason}</p>
+          {trade.status}
+        </span>
+        {trade.is_paper && (
+          <p className="text-xs text-text-muted mt-1">Paper</p>
+        )}
       </td>
     </motion.tr>
   )
@@ -189,16 +173,16 @@ export default function HistoryPage() {
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
-      const coin = trade.symbol?.replace('USDT', '').toLowerCase() || ''
-      const direction = trade.direction?.toLowerCase() || ''
-      if (!coin.includes(query) && !direction.includes(query)) {
+      const coin = trade.coin?.toLowerCase() || ''
+      const side = trade.side?.toLowerCase() || ''
+      if (!coin.includes(query) && !side.includes(query)) {
         return false
       }
     }
 
     // Date filter
     if (dateFilter !== 'all') {
-      const tradeDate = new Date(trade.exit_time || trade.created_at)
+      const tradeDate = new Date(trade.executed_at || trade.created_at)
       const now = new Date()
       
       if (dateFilter === 'today') {
@@ -219,21 +203,20 @@ export default function HistoryPage() {
   // Sort trades
   const sortedTrades = [...filteredTrades].sort((a, b) => {
     let comparison = 0
-    const coinA = a.symbol?.replace('USDT', '') || ''
-    const coinB = b.symbol?.replace('USDT', '') || ''
     switch (sortField) {
       case 'time':
-        comparison = new Date(a.exit_time || a.created_at).getTime() - 
-                     new Date(b.exit_time || b.created_at).getTime()
+        comparison = new Date(a.executed_at || a.created_at).getTime() - 
+                     new Date(b.executed_at || b.created_at).getTime()
         break
       case 'coin':
-        comparison = coinA.localeCompare(coinB)
+        comparison = (a.coin || '').localeCompare(b.coin || '')
         break
       case 'pnl':
-        comparison = (a.pnl_usdt || 0) - (b.pnl_usdt || 0)
+        // Use total value as a proxy since we don't have pnl in this view
+        comparison = (a.price * a.quantity) - (b.price * b.quantity)
         break
       case 'size':
-        comparison = (a.size_usdt || 0) - (b.size_usdt || 0)
+        comparison = (a.price * a.quantity) - (b.price * b.quantity)
         break
     }
     return sortDirection === 'asc' ? comparison : -comparison
@@ -250,9 +233,9 @@ export default function HistoryPage() {
   const totalTrades = portfolio.totalTrades
   const totalVolume = portfolio.totalVolume
   
-  // Calculate long/short breakdown from visible trades for display
-  const longTrades = trades.filter(t => t.direction?.toUpperCase() === 'LONG').length
-  const shortTrades = trades.filter(t => t.direction?.toUpperCase() === 'SHORT').length
+  // Calculate buy/sell breakdown from visible trades for display
+  const buyTrades = trades.filter(t => t.side?.toLowerCase() === 'buy').length
+  const sellTrades = trades.filter(t => t.side?.toLowerCase() === 'sell').length
 
   const handleSort = (field: typeof sortField) => {
     if (sortField === field) {
@@ -308,7 +291,7 @@ export default function HistoryPage() {
               {totalTrades}
             </div>
             <p className="text-xs text-text-muted mt-1">
-              {longTrades} longs · {shortTrades} shorts (visible)
+              {buyTrades} buys · {sellTrades} sells (visible)
             </p>
           </motion.div>
 
@@ -413,7 +396,7 @@ export default function HistoryPage() {
                         onClick={() => handleSort('time')}
                       >
                         <div className="flex items-center gap-1">
-                          Exit Time
+                          Time
                           <ArrowUpDown className="w-3 h-3" />
                         </div>
                       </th>
@@ -427,22 +410,28 @@ export default function HistoryPage() {
                         </div>
                       </th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                        Direction
+                        Side
                       </th>
                       <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                        Entry
+                        Price
                       </th>
                       <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                        Exit
+                        Quantity
+                      </th>
+                      <th 
+                        className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider cursor-pointer hover:text-text-secondary"
+                        onClick={() => handleSort('size')}
+                      >
+                        <div className="flex items-center justify-end gap-1">
+                          Total
+                          <ArrowUpDown className="w-3 h-3" />
+                        </div>
                       </th>
                       <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                        Size
+                        Fee
                       </th>
                       <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                        PnL
-                      </th>
-                      <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                        Duration
+                        Status
                       </th>
                     </tr>
                   </thead>
