@@ -25,10 +25,12 @@ export interface PortfolioData {
   maxDrawdown: number
 }
 
+const INITIAL_CAPITAL = 100000
+
 const DEFAULT_PORTFOLIO: PortfolioData = {
-  totalEquity: 100000,
-  initialCapital: 100000,
-  cash: 100000,
+  totalEquity: INITIAL_CAPITAL,
+  initialCapital: INITIAL_CAPITAL,
+  cash: INITIAL_CAPITAL,
   positionsValue: 0,
   unrealizedPnl: 0,
   realizedPnl: 0,
@@ -61,25 +63,30 @@ export function usePortfolio(refreshInterval = 5000) {
       const data = await api.getPortfolio()
       
       if (data) {
+        const totalEquity = data.total_equity ?? INITIAL_CAPITAL
+        const totalPnl = totalEquity - INITIAL_CAPITAL
+        const pnlPercent = (totalPnl / INITIAL_CAPITAL) * 100
+        
         setPortfolio({
-          totalEquity: data.total_equity ?? 100000,
-          initialCapital: data.initial_capital ?? 100000,
-          cash: data.cash ?? 100000,
+          totalEquity,
+          initialCapital: INITIAL_CAPITAL,
+          cash: data.cash ?? INITIAL_CAPITAL,
           positionsValue: data.positions_value ?? 0,
           unrealizedPnl: data.unrealized_pnl ?? 0,
           realizedPnl: data.realized_pnl ?? 0,
-          totalPnl: data.total_pnl ?? 0,
-          pnlPercent: data.pnl_percent ?? 0,
+          totalPnl,
+          pnlPercent,
           openPositions: data.open_positions ?? 0,
-          totalTrades: data.total_trades ?? 0,
-          winningTrades: data.winning_trades ?? 0,
-          losingTrades: data.losing_trades ?? 0,
+          // These fields may not be in the API response - use defaults
+          totalTrades: 0,
+          winningTrades: 0,
+          losingTrades: 0,
           winRate: data.win_rate ?? 0,
-          totalVolume: data.total_volume ?? 0,
-          totalFees: data.total_fees ?? 0,
-          totalSpread: data.total_spread ?? 0,
-          totalSlippage: data.total_slippage ?? 0,
-          totalTradingCosts: data.total_trading_costs ?? 0,
+          totalVolume: 0,
+          totalFees: 0,
+          totalSpread: 0,
+          totalSlippage: 0,
+          totalTradingCosts: 0,
           maxDrawdown: data.max_drawdown ?? 0,
         })
         setError(null)
@@ -105,4 +112,3 @@ export function usePortfolio(refreshInterval = 5000) {
     refresh: fetchPortfolio,
   }
 }
-
