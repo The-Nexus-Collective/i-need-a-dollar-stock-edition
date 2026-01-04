@@ -96,10 +96,6 @@ public class GrokService {
             ));
             request.put("temperature", 0.3);
             request.put("max_tokens", MAX_TOKENS);
-            request.put("search_parameters", Map.of(
-                    "mode", "auto",
-                    "return_citations", true
-            ));
 
             String response = webClient.post()
                     .uri("/chat/completions")
@@ -119,6 +115,9 @@ public class GrokService {
 
             return result;
 
+        } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
+            log.error("Grok API error - Status: {}, Body: {}", e.getStatusCode(), e.getResponseBodyAsString());
+            return AnalysisResult.error(e.getResponseBodyAsString(), fullPrompt, "");
         } catch (Exception e) {
             log.error("Grok analysis failed: {}", e.getMessage(), e);
             return AnalysisResult.error(e.getMessage(), fullPrompt, "");
