@@ -282,12 +282,13 @@ Antworte NUR mit diesem JSON. Kein Text davor oder danach:
 JETZT ANALYSIERE: {coin} ({ticker})
 ═══════════════════════════════════════════════════════════════════"""
 
-    async def predict_all(self, coins: List[str]) -> List[Prediction]:
+    async def predict_all(self, coins: List[str], progress_callback=None) -> List[Prediction]:
         """
         Get predictions for all coins by calling Grok for each coin individually.
         
         Args:
             coins: List of coin symbols (e.g., ["BTC", "ETH", "SOL"])
+            progress_callback: Optional async callback(current, total, coin) for progress updates
             
         Returns:
             List of Prediction objects, one per coin
@@ -298,10 +299,18 @@ JETZT ANALYSIERE: {coin} ({ticker})
         
         predictions = []
         now = datetime.utcnow()
+        total = len(coins)
         
-        # Process coins in parallel batches
-        for coin in coins:
+        # Process coins one by one with progress updates
+        for i, coin in enumerate(coins):
             try:
+                # Report progress before starting this coin
+                if progress_callback:
+                    try:
+                        await progress_callback(i + 1, total, coin)
+                    except Exception as e:
+                        logger.debug(f"Progress callback error: {e}")
+                
                 prediction = await self._predict_single(coin, now)
                 predictions.append(prediction)
             except Exception as e:

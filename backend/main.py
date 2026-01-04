@@ -157,7 +157,7 @@ class TradingLoop:
         self._equity_tracker = None
         self._current_phase = "idle"  # idle, fetching, analyzing, trading
     
-    async def _broadcast_phase(self, phase: str, next_cycle_at: float = None):
+    async def _broadcast_phase(self, phase: str, next_cycle_at: float = None, progress_current: int = None, progress_total: int = None):
         """Broadcast current phase to connected clients."""
         self._current_phase = phase
         try:
@@ -165,8 +165,8 @@ class TradingLoop:
             from gateway.realtime import broadcast_phase
             from gateway.main import broadcast_phase_to_equity_ws
             
-            await broadcast_phase(phase, next_cycle_at, self._cycle_count)
-            await broadcast_phase_to_equity_ws(phase, next_cycle_at, self._cycle_count)
+            await broadcast_phase(phase, next_cycle_at, self._cycle_count, progress_current, progress_total)
+            await broadcast_phase_to_equity_ws(phase, next_cycle_at, self._cycle_count, progress_current, progress_total)
         except Exception as e:
             logger.debug(f"Could not broadcast phase: {e}")
     
@@ -193,9 +193,14 @@ class TradingLoop:
                 self._ws.add_symbols(symbols)
             
             # Step 2: Get predictions from Grok
-            await self._broadcast_phase("analyzing")
+            total_coins = len(coins)
+            await self._broadcast_phase("analyzing", progress_current=0, progress_total=total_coins)
             logger.info("Getting predictions from Grok...")
-            predictions = await self.predictor.predict_all(coins)
+            
+            async def progress_callback(current: int, total: int, coin: str):
+                await self._broadcast_phase("analyzing", progress_current=current, progress_total=total)
+            
+            predictions = await self.predictor.predict_all(coins, progress_callback=progress_callback)
             
             for pred in predictions:
                 arrow = "🟢" if pred.direction == "LONG" else "🔴"

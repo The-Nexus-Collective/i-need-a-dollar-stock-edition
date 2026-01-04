@@ -1932,7 +1932,7 @@ async def broadcast_equity_reset():
             _equity_websockets.discard(ws)
 
 
-async def broadcast_phase_to_equity_ws(phase: str, next_cycle_at: float = None, cycle_number: int = None):
+async def broadcast_phase_to_equity_ws(phase: str, next_cycle_at: float = None, cycle_number: int = None, progress_current: int = None, progress_total: int = None):
     """
     Broadcast phase update to all equity WebSocket connections.
     
@@ -1949,6 +1949,12 @@ async def broadcast_phase_to_equity_ws(phase: str, next_cycle_at: float = None, 
     
     if cycle_number is not None:
         message["cycle_number"] = cycle_number
+    
+    if progress_current is not None:
+        message["progress_current"] = progress_current
+    
+    if progress_total is not None:
+        message["progress_total"] = progress_total
     
     async with _equity_ws_lock:
         dead_connections = set()

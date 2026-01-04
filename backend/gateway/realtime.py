@@ -228,7 +228,7 @@ async def broadcast_status(status: str, message: str):
     })
 
 
-async def broadcast_phase(phase: str, next_cycle_at: float = None, cycle_number: int = None):
+async def broadcast_phase(phase: str, next_cycle_at: float = None, cycle_number: int = None, progress_current: int = None, progress_total: int = None):
     """
     Broadcast trading loop phase update.
     
@@ -236,6 +236,8 @@ async def broadcast_phase(phase: str, next_cycle_at: float = None, cycle_number:
         phase: Current phase - 'idle', 'fetching', 'analyzing', 'trading'
         next_cycle_at: Unix timestamp of next cycle (only for idle phase)
         cycle_number: Current cycle number
+        progress_current: Current progress (e.g., coins analyzed so far)
+        progress_total: Total items to process
     """
     message = {
         "type": "phase",
@@ -248,6 +250,12 @@ async def broadcast_phase(phase: str, next_cycle_at: float = None, cycle_number:
     
     if cycle_number is not None:
         message["cycle_number"] = cycle_number
+    
+    if progress_current is not None:
+        message["progress_current"] = progress_current
+    
+    if progress_total is not None:
+        message["progress_total"] = progress_total
     
     await manager.broadcast(message)
 

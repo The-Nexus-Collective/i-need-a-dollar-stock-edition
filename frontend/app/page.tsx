@@ -65,10 +65,10 @@ interface TraderStatus {
     total_cycles: number
     total_trades: number
     positions: any[]
-    total_fees_paid: number
-    total_spread_cost: number
-    total_slippage_cost: number
-    total_trading_costs: number
+    total_fees_paid?: number
+    total_spread_cost?: number
+    total_slippage_cost?: number
+    total_trading_costs?: number
   }
   top_coins_count: number
   cycle_interval_seconds: number
@@ -393,6 +393,8 @@ export default function Dashboard() {
   const [nextCycleAt, setNextCycleAt] = useState<number | null>(null)
   const [cycleNumber, setCycleNumber] = useState<number>(0)
   const [countdown, setCountdown] = useState<string>('')
+  const [progressCurrent, setProgressCurrent] = useState<number>(0)
+  const [progressTotal, setProgressTotal] = useState<number>(0)
 
   // WebSocket connection for real-time equity updates
   useEffect(() => {
@@ -427,6 +429,12 @@ export default function Dashboard() {
               }
               if (message.cycle_number) {
                 setCycleNumber(message.cycle_number)
+              }
+              if (message.progress_current !== undefined) {
+                setProgressCurrent(message.progress_current)
+              }
+              if (message.progress_total !== undefined) {
+                setProgressTotal(message.progress_total)
               }
             }
             
@@ -600,7 +608,7 @@ export default function Dashboard() {
                   {currentPhase === 'analyzing' && (
                     <>
                       <Brain className="w-3 h-3 animate-pulse" />
-                      AI ANALYZING
+                      {progressTotal > 0 ? `ANALYZING ${progressCurrent}/${progressTotal}` : 'AI ANALYZING'}
                     </>
                   )}
                   {currentPhase === 'trading' && (
