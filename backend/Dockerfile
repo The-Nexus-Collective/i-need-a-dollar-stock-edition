@@ -22,4 +22,4 @@ USER app
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-CMD ["python", "-m", "gateway.main"]
+CMD ["python", "main.py"]
