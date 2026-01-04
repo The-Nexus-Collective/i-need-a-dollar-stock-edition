@@ -68,10 +68,7 @@ services:
       - key: CORS_ALLOW_ALL
         scope: RUN_TIME
         value: "true"
-      # XAI/Grok API Key - inherited from app-level env var
-      - key: XAI_API_KEY
-        scope: RUN_TIME
-        value: ${XAI_API_KEY}
+      # Note: XAI_API_KEY is set at app-level and automatically inherited
     health_check:
       http_path: /health
       initial_delay_seconds: 60
