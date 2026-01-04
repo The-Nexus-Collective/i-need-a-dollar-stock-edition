@@ -121,7 +121,7 @@ function StrategyCard({ strategy }: { strategy: Strategy }) {
           </div>
           <div>
             <h3 className="font-semibold text-text-primary capitalize">
-              {strategy.strategy.replace('_', ' ')}
+              {(strategy.strategy || 'unknown').replace('_', ' ')}
             </h3>
             <p className="text-xs text-text-muted">{info.bestIn}</p>
           </div>

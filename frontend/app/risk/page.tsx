@@ -589,7 +589,7 @@ function RiskEventCard({ event, onAcknowledge }: { event: RiskEvent; onAcknowled
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-semibold text-text-primary">
-                {event.event_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                {(event.event_type || 'unknown').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
               </h3>
               <span className={clsx(
                 'px-2 py-0.5 rounded-full text-xs font-medium uppercase',
@@ -701,8 +701,8 @@ export default function RiskPage() {
             distanceToLiq < 15 ? 'warning' : 'safe'
           
           return {
-            coin: p.symbol.replace('USDT', ''),
-            side: p.direction.toLowerCase(),
+            coin: p.symbol?.replace('USDT', '') || 'UNKNOWN',
+            side: (p.direction || 'LONG').toLowerCase(),
             leverage: p.leverage,
             entry_price: p.entry_price,
             current_price: p.current_price,

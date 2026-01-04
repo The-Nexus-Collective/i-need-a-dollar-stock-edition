@@ -326,7 +326,7 @@ function PositionCard({
   liveData?: LivePositionData
 }) {
   const isLong = position.direction === 'LONG'
-  const coin = position.symbol.replace('USDT', '')
+  const coin = position.symbol?.replace('USDT', '') || 'UNKNOWN'
   
   // Use live data if available, otherwise fall back to position data
   const currentPrice = liveData?.current_price ?? position.current_price
@@ -513,7 +513,7 @@ function ActivityItem({
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-text-primary">{symbol.replace('USDT', '')}</span>
+          <span className="font-semibold text-text-primary">{symbol?.replace('USDT', '') || 'UNKNOWN'}</span>
           <span className={clsx('text-xs px-1.5 py-0.5 rounded', config.bg, config.color)}>
             {config.label}
           </span>
@@ -535,6 +535,7 @@ function ActivityFeed({ entries }: { entries: LogEntry[] }) {
   
   entries.slice(0, 5).forEach(entry => {
     entry.positions_opened?.forEach(pos => {
+      if (!pos.symbol) return
       activities.push({
         action: 'opened',
         symbol: pos.symbol,
@@ -543,6 +544,7 @@ function ActivityFeed({ entries }: { entries: LogEntry[] }) {
       })
     })
     entry.positions_closed?.forEach(pos => {
+      if (!pos.symbol) return
       activities.push({
         action: 'closed',
         symbol: pos.symbol,
@@ -551,6 +553,7 @@ function ActivityFeed({ entries }: { entries: LogEntry[] }) {
       })
     })
     entry.positions_extended?.forEach(pos => {
+      if (!pos.symbol) return
       activities.push({
         action: 'extended',
         symbol: pos.symbol,
@@ -559,6 +562,7 @@ function ActivityFeed({ entries }: { entries: LogEntry[] }) {
       })
     })
     entry.positions_reduced?.forEach(pos => {
+      if (!pos.symbol) return
       activities.push({
         action: 'reduced',
         symbol: pos.symbol,
