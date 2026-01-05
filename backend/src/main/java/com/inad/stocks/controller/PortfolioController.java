@@ -133,6 +133,7 @@ public class PortfolioController {
         if (marketStatus.nextOpenDisplay() != null) {
             marketData.put("next_open_display", marketStatus.nextOpenDisplay());
         }
+        marketData.put("data_source", marketStatus.dataSource());
         
         Map<String, Object> result = new HashMap<>();
         result.put("status", "running");
@@ -197,6 +198,8 @@ public class PortfolioController {
         if (status.nextOpenDisplay() != null) {
             result.put("next_open_display", status.nextOpenDisplay());
         }
+        result.put("data_source", status.dataSource());
+        result.put("polygon_api_available", marketHoursService.isPolygonApiAvailable());
         
         return result;
     }

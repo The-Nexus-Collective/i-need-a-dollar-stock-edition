@@ -479,6 +479,8 @@ class ApiClient {
       next_open: string | null
       next_close: string | null
       next_open_display: string | null
+      data_source: 'polygon.io' | 'local'
+      polygon_api_available: boolean
     }>('/api/market-status')
   }
 

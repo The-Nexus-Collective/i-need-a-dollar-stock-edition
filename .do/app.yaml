@@ -54,6 +54,9 @@ services:
       - key: BINANCE_API_SECRET
         scope: RUN_TIME
         type: SECRET
+      - key: POLYGON_API_KEY
+        scope: RUN_TIME
+        type: SECRET
       - key: CYCLE_INTERVAL
         scope: RUN_TIME
         value: "600000"

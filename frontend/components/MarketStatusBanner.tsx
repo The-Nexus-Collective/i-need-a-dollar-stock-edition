@@ -29,6 +29,8 @@ export interface MarketStatus {
   next_open: string | null
   next_close: string | null
   next_open_display: string | null
+  data_source?: 'polygon.io' | 'local'
+  polygon_api_available?: boolean
 }
 
 interface MarketStatusBannerProps {
@@ -228,6 +230,11 @@ export function MarketStatusBanner({
                   {marketStatus.description}
                   {marketStatus.next_open_display && !marketStatus.is_open && (
                     <span className="text-text-muted"> • Opens {marketStatus.next_open_display}</span>
+                  )}
+                  {marketStatus.data_source && (
+                    <span className="text-text-dim text-xs ml-2">
+                      via {marketStatus.data_source === 'polygon.io' ? '🔷 Polygon.io' : '📅 Local'}
+                    </span>
                   )}
                 </p>
               </div>

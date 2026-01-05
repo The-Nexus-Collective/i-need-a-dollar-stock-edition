@@ -1,12 +1,21 @@
 package com.inad.stocks.service;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Service for managing stock market trading hours.
@@ -35,6 +44,24 @@ public class MarketHoursService {
     
     @Value("${stocks.trading-hours.allow-afterhours:false}")
     private boolean allowAfterHours;
+    
+    @Value("${polygon.api-key:}")
+    private String polygonApiKey;
+    
+    @Value("${polygon.enabled:true}")
+    private boolean polygonEnabled;
+    
+    @Value("${polygon.cache-seconds:60}")
+    private int cacheSeconds;
+    
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    
+    // Cache for Polygon API response
+    private volatile PolygonMarketStatus cachedPolygonStatus = null;
+    private volatile Instant cacheExpiry = Instant.EPOCH;
     
     // Major US market holidays for 2024-2026 (approximate)
     private static final Set<LocalDate> MARKET_HOLIDAYS = Set.of(
@@ -73,18 +100,115 @@ public class MarketHoursService {
         LocalDate.of(2026, 12, 25)
     );
     
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // POLYGON.IO API INTEGRATION
+    // ═══════════════════════════════════════════════════════════════════════════════
+    
     /**
-     * Check if the market is currently open for regular trading.
+     * Polygon.io Market Status API response.
      */
-    public boolean isMarketOpen() {
-        ZonedDateTime now = ZonedDateTime.now(ET_ZONE);
-        return isMarketOpen(now);
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class PolygonMarketStatus {
+        @JsonProperty("market")
+        public String market;  // "open", "closed", "extended-hours"
+        
+        @JsonProperty("serverTime")
+        public String serverTime;
+        
+        @JsonProperty("exchanges")
+        public Map<String, String> exchanges;
+        
+        @JsonProperty("afterHours")
+        public boolean afterHours;
+        
+        @JsonProperty("earlyHours")
+        public boolean earlyHours;
+        
+        public boolean isOpen() {
+            return "open".equalsIgnoreCase(market);
+        }
+        
+        public boolean isExtendedHours() {
+            return "extended-hours".equalsIgnoreCase(market) || afterHours || earlyHours;
+        }
+        
+        public boolean isClosed() {
+            return "closed".equalsIgnoreCase(market);
+        }
     }
     
     /**
-     * Check if the market is open at a specific time.
+     * Fetch market status from Polygon.io API with caching.
+     * Returns null if API is disabled, unavailable, or fails.
      */
-    public boolean isMarketOpen(ZonedDateTime time) {
+    private PolygonMarketStatus fetchPolygonMarketStatus() {
+        // Check if Polygon is enabled and configured
+        if (!polygonEnabled || polygonApiKey == null || polygonApiKey.isBlank()) {
+            return null;
+        }
+        
+        // Check cache
+        if (cachedPolygonStatus != null && Instant.now().isBefore(cacheExpiry)) {
+            return cachedPolygonStatus;
+        }
+        
+        try {
+            String url = "https://api.polygon.io/v1/marketstatus/now?apiKey=" + polygonApiKey;
+            
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(5))
+                    .GET()
+                    .build();
+            
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            
+            if (response.statusCode() == 200) {
+                PolygonMarketStatus status = objectMapper.readValue(response.body(), PolygonMarketStatus.class);
+                
+                // Update cache
+                cachedPolygonStatus = status;
+                cacheExpiry = Instant.now().plusSeconds(cacheSeconds);
+                
+                log.debug("Polygon.io market status: {} (afterHours={}, earlyHours={})", 
+                        status.market, status.afterHours, status.earlyHours);
+                
+                return status;
+            } else {
+                log.warn("Polygon.io API returned status {}: {}", response.statusCode(), response.body());
+                return null;
+            }
+            
+        } catch (Exception e) {
+            log.warn("Failed to fetch Polygon.io market status: {} - falling back to local logic", e.getMessage());
+            return null;
+        }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // MARKET STATUS METHODS (with Polygon.io integration)
+    // ═══════════════════════════════════════════════════════════════════════════════
+    
+    /**
+     * Check if the market is currently open for regular trading.
+     * Uses Polygon.io API if available, falls back to local logic.
+     */
+    public boolean isMarketOpen() {
+        // Try Polygon.io first
+        PolygonMarketStatus polygonStatus = fetchPolygonMarketStatus();
+        if (polygonStatus != null) {
+            return polygonStatus.isOpen();
+        }
+        
+        // Fallback to local logic
+        ZonedDateTime now = ZonedDateTime.now(ET_ZONE);
+        return isMarketOpenLocal(now);
+    }
+    
+    /**
+     * Local fallback check for market open status.
+     */
+    private boolean isMarketOpenLocal(ZonedDateTime time) {
         LocalDate date = time.toLocalDate();
         LocalTime localTime = time.toLocalTime();
         
@@ -104,9 +228,31 @@ public class MarketHoursService {
     }
     
     /**
+     * Check if the market is open at a specific time (local logic only, for testing).
+     */
+    public boolean isMarketOpen(ZonedDateTime time) {
+        return isMarketOpenLocal(time);
+    }
+    
+    /**
      * Check if it's currently pre-market hours.
+     * Uses Polygon.io API if available, falls back to local logic.
      */
     public boolean isPreMarket() {
+        // Try Polygon.io first
+        PolygonMarketStatus polygonStatus = fetchPolygonMarketStatus();
+        if (polygonStatus != null) {
+            return polygonStatus.earlyHours;
+        }
+        
+        // Fallback to local logic
+        return isPreMarketLocal();
+    }
+    
+    /**
+     * Local fallback check for pre-market hours.
+     */
+    private boolean isPreMarketLocal() {
         ZonedDateTime now = ZonedDateTime.now(ET_ZONE);
         LocalDate date = now.toLocalDate();
         LocalTime localTime = now.toLocalTime();
@@ -125,8 +271,23 @@ public class MarketHoursService {
     
     /**
      * Check if it's currently after-hours trading.
+     * Uses Polygon.io API if available, falls back to local logic.
      */
     public boolean isAfterHours() {
+        // Try Polygon.io first
+        PolygonMarketStatus polygonStatus = fetchPolygonMarketStatus();
+        if (polygonStatus != null) {
+            return polygonStatus.afterHours;
+        }
+        
+        // Fallback to local logic
+        return isAfterHoursLocal();
+    }
+    
+    /**
+     * Local fallback check for after-hours trading.
+     */
+    private boolean isAfterHoursLocal() {
         ZonedDateTime now = ZonedDateTime.now(ET_ZONE);
         LocalDate date = now.toLocalDate();
         LocalTime localTime = now.toLocalTime();
@@ -145,18 +306,45 @@ public class MarketHoursService {
     
     /**
      * Check if trading is allowed right now based on market hours and configuration.
+     * Uses Polygon.io API for accurate market status detection.
      */
     public boolean isTradingAllowed() {
-        if (isMarketOpen()) {
+        // Try Polygon.io first for the most accurate status
+        PolygonMarketStatus polygonStatus = fetchPolygonMarketStatus();
+        if (polygonStatus != null) {
+            if (polygonStatus.isOpen()) {
+                return true;
+            }
+            if (polygonStatus.isExtendedHours()) {
+                // Check if extended hours trading is allowed
+                if (polygonStatus.earlyHours && allowPremarket) {
+                    return true;
+                }
+                if (polygonStatus.afterHours && allowAfterHours) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        // Fallback to local logic
+        if (isMarketOpenLocal(ZonedDateTime.now(ET_ZONE))) {
             return true;
         }
-        if (allowPremarket && isPreMarket()) {
+        if (allowPremarket && isPreMarketLocal()) {
             return true;
         }
-        if (allowAfterHours && isAfterHours()) {
+        if (allowAfterHours && isAfterHoursLocal()) {
             return true;
         }
         return false;
+    }
+    
+    /**
+     * Check if Polygon.io API is available and returning data.
+     */
+    public boolean isPolygonApiAvailable() {
+        return fetchPolygonMarketStatus() != null;
     }
     
     /**
@@ -283,11 +471,12 @@ public class MarketHoursService {
         Long secondsUntilClose,
         ZonedDateTime nextOpen,
         ZonedDateTime nextClose,
-        boolean tradingAllowed
+        boolean tradingAllowed,
+        String dataSource  // "polygon.io" or "local"
     ) {
         // Convenience constructor for backward compatibility
         public MarketStatus(String status, String description, String detail, String nextOpenDisplay) {
-            this(status, description, detail, nextOpenDisplay, null, null, null, null, "OPEN".equals(status));
+            this(status, description, detail, nextOpenDisplay, null, null, null, null, "OPEN".equals(status), "local");
         }
         
         public boolean isOpen() {
@@ -337,10 +526,15 @@ public class MarketHoursService {
     
     /**
      * Get detailed market status with calculated time values.
+     * Uses Polygon.io API if available for most accurate status.
      */
     public MarketStatus getDetailedMarketStatus() {
         ZonedDateTime now = ZonedDateTime.now(ET_ZONE);
         LocalDate date = now.toLocalDate();
+        
+        // Check Polygon.io for accurate market status
+        PolygonMarketStatus polygonStatus = fetchPolygonMarketStatus();
+        String dataSource = polygonStatus != null ? "polygon.io" : "local";
         
         boolean isOpen = isMarketOpen();
         boolean isPremarket = isPreMarket();
@@ -367,7 +561,8 @@ public class MarketHoursService {
                 secondsUntilClose,
                 null,
                 nextCloseTime,
-                true
+                true,
+                dataSource
             );
         }
         
@@ -385,7 +580,8 @@ public class MarketHoursService {
                 null,
                 nextOpenTime,
                 null,
-                allowPremarket
+                allowPremarket,
+                dataSource
             );
         }
         
@@ -399,7 +595,8 @@ public class MarketHoursService {
                 null,
                 nextOpenTime,
                 null,
-                allowAfterHours
+                allowAfterHours,
+                dataSource
             );
         }
         
@@ -412,6 +609,11 @@ public class MarketHoursService {
             closedReason = "Holiday - Market closed";
         }
         
+        // If using Polygon and it says closed, trust it (could be emergency closure)
+        if (polygonStatus != null && polygonStatus.isClosed()) {
+            closedReason = "Market is closed";  // Polygon.io confirmed
+        }
+        
         return new MarketStatus(
             "CLOSED",
             closedReason,
@@ -421,7 +623,8 @@ public class MarketHoursService {
             null,
             nextOpenTime,
             null,
-            false
+            false,
+            dataSource
         );
     }
 }

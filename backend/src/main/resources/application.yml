@@ -93,6 +93,12 @@ stocks:
       - LDOS   # Leidos
   min-volume: 1000000  # Minimum daily volume
 
+# Polygon.io API Configuration (for reliable market hours detection)
+polygon:
+  api-key: ${POLYGON_API_KEY:}
+  enabled: ${POLYGON_ENABLED:true}
+  cache-seconds: 60  # Cache API response for 60 seconds
+
 # Grok AI (xAI) Configuration
 xai:
   api-key: ${XAI_API_KEY:}
