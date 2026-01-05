@@ -223,7 +223,36 @@ public class GrokService {
             %s
             
             ═══════════════════════════════════════════════════════════════════
-            RISK ASSESSMENT FOR OPEN POSITIONS (IMPORTANT!)
+            PATIENCE RULES - DO NOT CLOSE TRADES PREMATURELY!
+            ═══════════════════════════════════════════════════════════════════
+            
+            CRITICAL: Crypto markets are volatile. Small drawdowns are NORMAL, not signals to exit!
+            
+            MINIMUM HOLD TIME RULES:
+            - Hold time < 1h: ONLY close if max_acceptable_loss exceeded OR critical breaking news
+            - Hold time < 4h: Allow position to develop - small losses are expected
+            - Hold time < expected_hold_hours_min: Trust your original thesis unless clearly invalidated
+            
+            NOISE VS SIGNAL:
+            - PnL between -5%% and +5%% in first 2 hours = NOISE, not a trend
+            - Only react to CONFIRMED sentiment reversals (not just price movement)
+            - A 1-3%% drawdown is NOT a reason to close - it's normal market fluctuation
+            
+            WHEN TO ACTUALLY CLOSE:
+            ✗ Price dropped 2%% in 30 minutes → DO NOT CLOSE (normal volatility)
+            ✗ Position red after 1 hour → DO NOT CLOSE (give it time)
+            ✗ Small loss within expected_hold_hours_min → DO NOT CLOSE (trust your thesis)
+            ✓ max_acceptable_loss_percent exceeded → CLOSE (your pre-defined limit hit)
+            ✓ Clear sentiment reversal with breaking news → CLOSE (thesis invalidated)
+            ✓ Margin Risk > 70%% → CLOSE (liquidation risk)
+            
+            YOUR PRE-MORTEM IS A COMMITMENT:
+            - You defined expected_hold_hours_min for a reason - honor it!
+            - You defined max_acceptable_loss_percent - that's your stop, not -5%%
+            - Only close early if your BEAR CASE is actively happening NOW
+            
+            ═══════════════════════════════════════════════════════════════════
+            RISK ASSESSMENT FOR OPEN POSITIONS
             ═══════════════════════════════════════════════════════════════════
             
             The positions above contain detailed risk data. Follow these rules:
@@ -233,11 +262,11 @@ public class GrokService {
             🟠 ELEVATED (Margin Risk 30-50%%): CAUTION - Only hold with strong sentiment
             🟢 OK (Margin Risk < 30%%): Continue normal analysis
             
-            ADDITIONAL RISK FACTORS:
-            - PnL < -15%%: Heavy losses - Check stop-loss, consider CLOSE
-            - PnL < -25%%: Critical losses - CLOSE recommended unless very strong reversal signal
-            - Hold time > 24h without movement: Capital locked - CLOSE if no catalyst in sight
-            - Hold time > 48h: Check if better to rotate into other opportunities
+            ADDITIONAL RISK FACTORS (respect your PRE-MORTEM limits!):
+            - PnL exceeds YOUR max_acceptable_loss_percent: CLOSE (honor your pre-mortem commitment)
+            - PnL < -25%% AND hold time > expected_hold_hours_max: Consider CLOSE if thesis invalidated
+            - Hold time > 48h AND PnL negative AND sentiment clearly reversed: Consider rotating capital
+            - Hold time > 72h: Evaluate if original thesis still valid - not automatic CLOSE
             
             ═══════════════════════════════════════════════════════════════════
             PRE-MORTEM HEALTH CHECK (SELF-LEARNING FEEDBACK!)
@@ -319,12 +348,18 @@ public class GrokService {
             PROFIT-TAKING & CAPITAL ROTATION STRATEGY
             ═══════════════════════════════════════════════════════════════════
             
-            GOAL: Actively rotate capital from "exhausted" positions into trades with stronger momentum.
+            GOAL: Take profits at YOUR target_pnl_percent, not at arbitrary thresholds.
             
-            PROACTIVE REDUCE RULES (take profits, free up capital):
-            - +10-20%% PnL + fading momentum -> REDUCE 30-40%%
-            - +20-40%% PnL + sentiment below 50 -> REDUCE 50%%
-            - +40%%+ PnL -> REDUCE 50-70%% (regardless of sentiment)
+            PROFIT-TAKING RULES (be patient, let winners run!):
+            - target_pnl_percent reached → REDUCE 50-70%% (this was YOUR goal - take it!)
+            - +15-25%% PnL + CONFIRMED trend reversal → REDUCE 25-35%%
+            - +25-50%% PnL + sentiment clearly bearish (<30) → REDUCE 40-50%%
+            - +50%%+ PnL → REDUCE 50-70%% (exceptional gains - secure them)
+            
+            DO NOT REDUCE JUST BECAUSE:
+            - Position is slightly green (+5-10%%) - let it develop
+            - Momentum is "fading" but still positive - wait for confirmation
+            - You feel nervous - trust your pre-mortem analysis
             
             ═══════════════════════════════════════════════════════════════════
             TASK 3: NEW OPPORTUNITIES
