@@ -748,9 +748,21 @@ export default function Dashboard() {
   useEffect(() => {
     const connectWebSocket = () => {
       try {
-        // Build WebSocket URL - append /equity to base URL if needed
-        const wsBase = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8081/ws'
-        const wsUrl = wsBase.endsWith('/equity') ? wsBase : `${wsBase}/equity`
+        // Build WebSocket URL dynamically from current location or env var
+        let wsUrl: string
+        if (process.env.NEXT_PUBLIC_WS_URL) {
+          // Use configured URL if available
+          const wsBase = process.env.NEXT_PUBLIC_WS_URL
+          wsUrl = wsBase.endsWith('/equity') ? wsBase : `${wsBase}/equity`
+        } else if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+          // Derive from current page URL for production
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+          wsUrl = `${protocol}//${window.location.host}/ws/equity`
+        } else {
+          // Local development fallback
+          wsUrl = 'ws://localhost:8081/ws/equity'
+        }
+        console.log('Connecting to WebSocket:', wsUrl)
         const ws = new WebSocket(wsUrl)
         wsRef.current = ws
         

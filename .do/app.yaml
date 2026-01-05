@@ -23,6 +23,8 @@ services:
     instance_size_slug: professional-xs
     routes:
       - path: /api
+      - path: /ws/equity
+      - path: /ws/live
       - path: /ws
       - path: /actuator
     health_check:

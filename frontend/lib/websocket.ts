@@ -52,9 +52,17 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       return
     }
 
-    // Compute WebSocket URL - use backend directly
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8081/ws'
-    const url = `${wsUrl}?channel=${channel}`
+    // Compute WebSocket URL - derive from current location in production
+    let wsBase: string
+    if (process.env.NEXT_PUBLIC_WS_URL) {
+      wsBase = process.env.NEXT_PUBLIC_WS_URL
+    } else if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      wsBase = `${protocol}//${window.location.host}/ws`
+    } else {
+      wsBase = 'ws://localhost:8081/ws'
+    }
+    const url = `${wsBase}?channel=${channel}`
 
     try {
       wsRef.current = new WebSocket(url)
