@@ -17,7 +17,7 @@ import {
 
 interface Position {
   id: string
-  coin: string
+  symbol: string
   side: 'long' | 'short'
   quantity: number
   entryPrice: number
@@ -27,7 +27,6 @@ interface Position {
   unrealizedPnl: number
   openedAt: string
   fee?: number
-  slippage?: number
 }
 
 interface PositionCardProps {
@@ -99,7 +98,7 @@ export function PositionCard({ position }: PositionCardProps) {
 
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-lg font-semibold text-text-primary">{position.coin}</span>
+                <span className="text-lg font-semibold text-text-primary">{position.symbol}</span>
                 <span className={clsx(
                   'badge',
                   isLong ? 'badge-long' : 'badge-short'
@@ -262,12 +261,6 @@ export function PositionCard({ position }: PositionCardProps) {
                   <span className="text-label block mb-1">Fees Paid</span>
                   <span className="text-sm font-mono text-accent-amber">
                     ${(position.fee || 0).toFixed(4)}
-                  </span>
-                </div>
-                <div className="bg-void/30 rounded-lg p-3">
-                  <span className="text-label block mb-1">Slippage</span>
-                  <span className="text-sm font-mono text-accent-amber">
-                    ${(position.slippage || 0).toFixed(4)}
                   </span>
                 </div>
               </div>

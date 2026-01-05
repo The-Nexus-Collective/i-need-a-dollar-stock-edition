@@ -68,3 +68,11 @@ databaseChangeLog:
             relativeToChangelogFile: true
             splitStatements: true
             stripComments: false
+
+  - include:
+      file: 030-stock-migration.sql
+      relativeToChangelogFile: true
+
+  - include:
+      file: 035-margin-fields.sql
+      relativeToChangelogFile: true

@@ -236,7 +236,7 @@ export default function StrategiesPage() {
   const { isConnected } = useWebSocket({ channel: 'all' })
   
   useEffect(() => {
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081'
     async function fetchData() {
       try {
         const data = await fetch(`${API_URL}/api/strategies`).then(r => r.json())

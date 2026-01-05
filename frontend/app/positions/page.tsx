@@ -7,7 +7,6 @@ import {
   TrendingDown, 
   Clock, 
   Target,
-  Shield,
   BarChart2,
   RefreshCw,
 } from 'lucide-react'
@@ -25,8 +24,7 @@ interface Position {
   quantity: number
   entry_price: number
   current_price: number
-  size_usdt: number
-  leverage: number
+  size_usd: number
   stop_loss_price: number | null
   take_profit_price: number | null
   status: string
@@ -38,8 +36,8 @@ interface Position {
   reasoning: string | null
   unrealized_pnl: number
   pnl_percent: number  // Backend sends pnl_percent
-  liquidation_price: number
-  margin_risk_pct: number
+  sector: string | null
+  exchange: string | null
 }
 
 function formatCurrency(value: number, showSign = false): string {
@@ -80,11 +78,7 @@ function PositionMobileCard({ position }: { position: Position }) {
   const currentPrice = position.current_price || position.entry_price || 0
   const isProfitable = (position.unrealized_pnl || 0) >= 0
   const pnlPercent = position.pnl_percent || 0
-  const coin = position.symbol?.replace('USDT', '') || 'UNKNOWN'
-  const liquidationPrice = position.liquidation_price || 0
-  const distanceToLiq = liquidationPrice > 0 && currentPrice > 0
-    ? Math.abs((currentPrice - liquidationPrice) / currentPrice) * 100
-    : 0
+  const stockSymbol = position.symbol || 'UNKNOWN'
 
   return (
     <motion.div
@@ -110,15 +104,15 @@ function PositionMobileCard({ position }: { position: Position }) {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-bold text-text-primary text-lg">{coin}</span>
+              <span className="font-bold text-text-primary text-lg">{stockSymbol}</span>
               <span className={clsx(
                 'text-xs px-2 py-0.5 rounded-full',
                 isLong ? 'bg-accent-emerald/20 text-accent-emerald' : 'bg-accent-red/20 text-accent-red'
               )}>
                 {displaySide}
               </span>
-              {position.leverage && (
-                <span className="text-xs text-accent-cyan">{position.leverage}x</span>
+              {position.sector && (
+                <span className="text-xs text-accent-cyan">{position.sector}</span>
               )}
             </div>
             <p className="text-xs text-text-muted flex items-center gap-1">
@@ -126,6 +120,7 @@ function PositionMobileCard({ position }: { position: Position }) {
               {position.entry_time && !isNaN(new Date(position.entry_time).getTime()) 
                 ? new Date(position.entry_time).toLocaleString() 
                 : 'Unknown'}
+              {position.exchange && <span className="ml-1">• {position.exchange}</span>}
             </p>
           </div>
         </div>
@@ -162,7 +157,7 @@ function PositionMobileCard({ position }: { position: Position }) {
         <div>
           <span className="text-xs text-text-muted block">Size</span>
           <span className="font-mono text-text-primary">
-            {position.size_usdt ? formatCurrency(position.size_usdt) : formatCurrency((position.quantity || 0) * currentPrice)}
+            {position.size_usd ? formatCurrency(position.size_usd) : formatCurrency((position.quantity || 0) * currentPrice)}
           </span>
         </div>
         <div>
@@ -176,24 +171,6 @@ function PositionMobileCard({ position }: { position: Position }) {
           </span>
         </div>
       </div>
-
-      {/* Liquidation Warning */}
-      {liquidationPrice > 0 && (
-        <div className="mt-3 pt-3 border-t border-glass-border flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs">
-            <Shield className="w-4 h-4 text-accent-red" />
-            <span className="text-text-muted">Liquidation:</span>
-            <span className="font-mono text-text-primary">{formatCurrency(liquidationPrice)}</span>
-          </div>
-          <span className={clsx(
-            'text-xs font-mono',
-            distanceToLiq < 10 ? 'text-accent-red' : 
-            distanceToLiq < 20 ? 'text-accent-amber' : 'text-accent-emerald'
-          )}>
-            {distanceToLiq.toFixed(1)}% away
-          </span>
-        </div>
-      )}
     </motion.div>
   )
 }
@@ -210,14 +187,8 @@ function PositionRow({ position }: { position: Position }) {
   const isProfitable = (position.unrealized_pnl || 0) >= 0
   const pnlPercent = position.pnl_percent || 0
 
-  // Get coin symbol (remove USDT suffix if present)
-  const coin = position.symbol?.replace('USDT', '') || 'UNKNOWN'
-
-  // Use liquidation price for risk display
-  const liquidationPrice = position.liquidation_price || 0
-  const distanceToLiq = liquidationPrice > 0 && currentPrice > 0
-    ? Math.abs((currentPrice - liquidationPrice) / currentPrice) * 100
-    : 0
+  // Get stock symbol
+  const stockSymbol = position.symbol || 'UNKNOWN'
 
   return (
     <motion.tr
@@ -225,7 +196,7 @@ function PositionRow({ position }: { position: Position }) {
       animate={{ opacity: 1, y: 0 }}
       className="border-b border-glass-border hover:bg-glass-bg/50 transition-colors"
     >
-      {/* Coin & Side */}
+      {/* Stock & Side */}
       <td className="py-4 px-4">
         <div className="flex items-center gap-3">
           <div className={clsx(
@@ -239,21 +210,22 @@ function PositionRow({ position }: { position: Position }) {
             )}
           </div>
           <div>
-            <span className="font-semibold text-text-primary">{coin}</span>
+            <span className="font-semibold text-text-primary">{stockSymbol}</span>
             <span className={clsx(
               'ml-2 text-xs px-2 py-0.5 rounded-full',
               isLong ? 'bg-accent-emerald/20 text-accent-emerald' : 'bg-accent-red/20 text-accent-red'
             )}>
               {displaySide}
             </span>
-            {position.leverage && (
-              <span className="ml-1 text-xs text-accent-cyan">{position.leverage}x</span>
+            {position.sector && (
+              <span className="ml-1 text-xs text-accent-cyan">{position.sector}</span>
             )}
             <p className="text-xs text-text-muted mt-0.5">
               <Clock className="w-3 h-3 inline mr-1" />
               {position.entry_time && !isNaN(new Date(position.entry_time).getTime()) 
                 ? new Date(position.entry_time).toLocaleString() 
                 : 'Unknown'}
+              {position.exchange && <span className="ml-1">• {position.exchange}</span>}
             </p>
           </div>
         </div>
@@ -262,10 +234,10 @@ function PositionRow({ position }: { position: Position }) {
       {/* Quantity / Size */}
       <td className="py-4 px-4 text-right">
         <span className="font-mono text-text-primary">
-          {position.quantity?.toFixed(6) || position.size_usdt?.toFixed(0) || '-'}
+          {position.quantity?.toFixed(2) || position.size_usd?.toFixed(0) || '-'}
         </span>
         <p className="text-xs text-text-muted">
-          {position.size_usdt ? formatCurrency(position.size_usdt) : formatCurrency((position.quantity || 0) * currentPrice)}
+          {position.size_usd ? formatCurrency(position.size_usd) : formatCurrency((position.quantity || 0) * currentPrice)}
         </p>
       </td>
 
@@ -286,27 +258,11 @@ function PositionRow({ position }: { position: Position }) {
         </span>
       </td>
 
-      {/* Liquidation Price */}
+      {/* Sector */}
       <td className="py-4 px-4 text-right">
-        {liquidationPrice > 0 ? (
-          <div className="flex items-center justify-end gap-2">
-            <Shield className="w-4 h-4 text-accent-red" />
-            <div>
-              <span className="font-mono text-text-primary">
-                {formatCurrency(liquidationPrice)}
-              </span>
-              <p className={clsx(
-                'text-xs',
-                distanceToLiq < 10 ? 'text-accent-red' : 
-                distanceToLiq < 20 ? 'text-accent-amber' : 'text-accent-emerald'
-              )}>
-                {distanceToLiq.toFixed(1)}% away
-              </p>
-            </div>
-          </div>
-        ) : (
-          <span className="text-text-muted">-</span>
-        )}
+        <span className="text-text-muted text-sm">
+          {position.sector || '-'}
+        </span>
       </td>
 
       {/* Conviction */}
@@ -385,8 +341,7 @@ export default function PositionsPage() {
           quantity: p.quantity,
           entry_price: p.entry_price,
           current_price: p.current_price,
-          size_usdt: p.size_usdt,
-          leverage: p.leverage,
+          size_usd: p.size_usd,
           stop_loss_price: null, // PM doesn't use fixed SL
           take_profit_price: null, // PM doesn't use fixed TP
           status: 'open',
@@ -398,8 +353,8 @@ export default function PositionsPage() {
           reasoning: p.reasoning,    // Backend sends reasoning
           unrealized_pnl: p.unrealized_pnl,
           pnl_percent: p.pnl_percent,  // Backend sends pnl_percent
-          liquidation_price: p.liquidation_price,
-          margin_risk_pct: p.margin_risk_pct,
+          sector: p.sector,
+          exchange: p.exchange,
         }))
         setPositions(mappedPositions)
       } else {
@@ -572,7 +527,7 @@ export default function PositionsPage() {
                         Current
                       </th>
                       <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                        Liquidation
+                        Sector
                       </th>
                       <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
                         Conviction

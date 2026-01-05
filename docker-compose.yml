@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# SPRING BOOT ARCHITECTURE: 3 Containers
+# STOCK PORTFOLIO MANAGER - SPRING BOOT ARCHITECTURE
 # - PostgreSQL (Database with Liquibase migrations)
 # - Backend (Spring Boot - API + Trading Engine)
 # - Frontend (Next.js Dashboard)
@@ -12,17 +12,17 @@ services:
   
   postgres:
     image: pgvector/pgvector:pg15
-    container_name: trading_db
+    container_name: inad_stock_db
     environment:
-      POSTGRES_DB: trading
+      POSTGRES_DB: trading_stock
       POSTGRES_USER: ${DB_USERNAME:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_stock_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5435:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d trading"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d trading_stock"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -30,23 +30,22 @@ services:
 
   # ═══════════════════════════════════════════════════════════════════════════
   # BACKEND (Spring Boot)
+  # Stock Portfolio Manager with Yahoo Finance Integration
   # ═══════════════════════════════════════════════════════════════════════════
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: trading_backend
+    container_name: inad_stock_backend
     environment:
       # Database
-      - DATABASE_URL=jdbc:postgresql://postgres:5432/trading
+      - DATABASE_URL=jdbc:postgresql://postgres:5432/trading_stock
       - DB_USERNAME=${DB_USERNAME:-postgres}
       - DB_PASSWORD=${DB_PASSWORD:-postgres}
       # Trading Configuration
       - MODE=${MODE:-paper}
       - XAI_API_KEY=${XAI_API_KEY:-}
-      - BINANCE_API_KEY=${BINANCE_API_KEY:-}
-      - BINANCE_API_SECRET=${BINANCE_API_SECRET:-}
       # Cycle Configuration
       - CYCLE_INTERVAL=${CYCLE_INTERVAL:-600000}
       - STARTING_CAPITAL=${STARTING_CAPITAL:-100000}
@@ -55,11 +54,11 @@ services:
       - MIN_DEPLOYMENT_RATIO=${MIN_DEPLOYMENT_RATIO:-0.75}
       - MAX_DEPLOYMENT_RATIO=${MAX_DEPLOYMENT_RATIO:-0.90}
       # Server
-      - API_PORT=8080
+      - API_PORT=8081
       - CORS_ALLOW_ALL=true
       - SPRING_PROFILES_ACTIVE=docker
     ports:
-      - "8080:8080"
+      - "8081:8081"
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,12 +72,12 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: trading_frontend
+    container_name: inad_stock_frontend
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8080
-      - NEXT_PUBLIC_WS_URL=ws://localhost:8080/ws/equity
+      - NEXT_PUBLIC_API_URL=http://localhost:8081
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8081/ws/equity
     ports:
-      - "3000:3000"
+      - "3100:3000"
     depends_on:
       - backend
     restart: unless-stopped
@@ -89,35 +88,35 @@ services:
 
   prometheus:
     image: prom/prometheus:latest
-    container_name: trading_prometheus
+    container_name: inad_stock_prometheus
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
+      - prometheus_stock_data:/prometheus
     ports:
-      - "9090:9090"
+      - "9091:9090"
     profiles:
       - monitoring
     restart: unless-stopped
 
   grafana:
     image: grafana/grafana:latest
-    container_name: trading_grafana
+    container_name: inad_stock_grafana
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
-      - grafana_data:/var/lib/grafana
+      - grafana_stock_data:/var/lib/grafana
     ports:
-      - "3001:3000"
+      - "3101:3000"
     profiles:
       - monitoring
     restart: unless-stopped
 
 volumes:
-  postgres_data:
-  prometheus_data:
-  grafana_data:
+  postgres_stock_data:
+  prometheus_stock_data:
+  grafana_stock_data:
 
 networks:
   default:
-    name: trading_network
+    name: inad_stock_network

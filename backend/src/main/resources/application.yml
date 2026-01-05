@@ -1,9 +1,9 @@
 spring:
   application:
-    name: trading-platform
+    name: i-need-a-dollar-stock-edition
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/trading}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5435/trading_stock}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
@@ -27,7 +27,7 @@ spring:
     default-property-inclusion: non_null
 
 server:
-  port: ${API_PORT:8080}
+  port: ${API_PORT:8081}
   tomcat:
     connection-timeout: 60s
   servlet:
@@ -47,26 +47,61 @@ trading:
     max-ratio: ${MAX_DEPLOYMENT_RATIO:0.90}
   capital:
     starting: ${STARTING_CAPITAL:100000}
-  margin:
-    enabled: ${MARGIN_MONITORING_ENABLED:true}
-    warning-threshold: ${MARGIN_WARNING_THRESHOLD:5.0}   # Warn at 5% distance to liquidation
-    critical-threshold: ${MARGIN_CRITICAL_THRESHOLD:2.0} # Critical at 2% distance
 
-# External APIs
-binance:
-  api-key: ${BINANCE_API_KEY:}
-  api-secret: ${BINANCE_API_SECRET:}
-  futures-base-url: https://fapi.binance.com
-  websocket-url: wss://fstream.binance.com/ws
+# Stock Universe Configuration
+stocks:
+  data-provider: yahoo-finance
+  market-timezone: America/New_York
+  trading-hours:
+    open: "09:30"
+    close: "16:00"
+    allow-premarket: false
+    allow-afterhours: false
+  universe:
+    # High-liquidity Tech Stocks
+    tech:
+      - AAPL   # Apple
+      - MSFT   # Microsoft
+      - GOOGL  # Alphabet
+      - AMZN   # Amazon
+      - META   # Meta Platforms
+      - NVDA   # NVIDIA
+      - TSLA   # Tesla
+      - AMD    # AMD
+      - INTC   # Intel
+      - CRM    # Salesforce
+      - ORCL   # Oracle
+      - ADBE   # Adobe
+      - CSCO   # Cisco
+      - IBM    # IBM
+      - QCOM   # Qualcomm
+      - AVGO   # Broadcom
+      - TXN    # Texas Instruments
+      - MU     # Micron
+      - AMAT   # Applied Materials
+      - LRCX   # Lam Research
+    # Defense/Aerospace Stocks
+    defense:
+      - LMT    # Lockheed Martin
+      - RTX    # Raytheon Technologies
+      - NOC    # Northrop Grumman
+      - GD     # General Dynamics
+      - BA     # Boeing
+      - LHX    # L3Harris Technologies
+      - HII    # Huntington Ingalls
+      - TDG    # TransDigm
+      - LDOS   # Leidos
+  min-volume: 1000000  # Minimum daily volume
 
+# Grok AI (xAI) Configuration
 xai:
   api-key: ${XAI_API_KEY:}
   base-url: https://api.x.ai/v1
-  model: ${XAI_MODEL:grok-4-1-fast-reasoning}  # Latest Grok model with fast reasoning
+  model: ${XAI_MODEL:grok-4-1-fast-reasoning}
 
 # CORS Configuration
 cors:
-  allowed-origins: ${CORS_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
+  allowed-origins: ${CORS_ORIGINS:http://localhost:3100,http://127.0.0.1:3100}
   allow-all: ${CORS_ALLOW_ALL:false}
 
 # Actuator endpoints
@@ -83,7 +118,7 @@ management:
 logging:
   level:
     root: INFO
-    com.trading: DEBUG
+    com.inad.stocks: DEBUG
     org.springframework.web.socket: DEBUG
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} | %-5level | %logger{36} | %msg%n"
@@ -102,4 +137,3 @@ logging:
   level:
     org.hibernate.SQL: WARN
     org.hibernate.type.descriptor.sql: WARN
-

@@ -12,12 +12,11 @@ import {
 
 interface Trade {
   id: string
-  coin: string
+  symbol: string
   side: 'buy' | 'sell'
   price: number
   quantity: number
   fee: number
-  slippage: number
   total: number
   pnl?: number
   executedAt: string
@@ -60,12 +59,12 @@ export function TradeHistory({ trades, limit = 15 }: TradeHistoryProps) {
           <thead>
             <tr>
               <th>Time</th>
-              <th>Coin</th>
+              <th>Symbol</th>
               <th>Side</th>
               <th>Price</th>
               <th>Quantity</th>
               <th>Fee</th>
-              <th>Slippage</th>
+              <th>Total</th>
               <th>P&L</th>
             </tr>
           </thead>
@@ -89,7 +88,7 @@ export function TradeHistory({ trades, limit = 15 }: TradeHistoryProps) {
                   </div>
                 </td>
                 <td>
-                  <span className="font-semibold">{trade.coin}</span>
+                  <span className="font-semibold">{trade.symbol}</span>
                 </td>
                 <td>
                   <span className={clsx(
@@ -118,8 +117,8 @@ export function TradeHistory({ trades, limit = 15 }: TradeHistoryProps) {
                 <td className="font-mono text-accent-amber">
                   ${trade.fee.toFixed(4)}
                 </td>
-                <td className="font-mono text-accent-amber">
-                  ${trade.slippage.toFixed(4)}
+                <td className="font-mono text-text-primary">
+                  ${trade.total.toFixed(2)}
                 </td>
                 <td>
                   {trade.pnl !== undefined ? (

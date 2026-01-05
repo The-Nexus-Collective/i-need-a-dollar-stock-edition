@@ -1,6 +1,6 @@
-# I Need A Dollar - Trading Platform
+# I Need A Dollar Stock Edition
 
-A production-grade autonomous trading platform with AI-powered sentiment analysis, built with Spring Boot and Next.js.
+A production-grade autonomous stock trading platform with AI-powered sentiment analysis, built with Spring Boot and Next.js.
 
 ## Architecture
 
@@ -8,24 +8,24 @@ A production-grade autonomous trading platform with AI-powered sentiment analysi
 ┌─────────────────────────────────────────────────────────────────────┐
 │                           FRONTEND                                   │
 │                   (Next.js + React + Tailwind)                       │
-│                        Port 3000                                     │
+│                        Port 3100                                     │
 ├─────────────────────────────────────────────────────────────────────┤
 │                              ↕                                       │
 │                     REST API + WebSocket                             │
 ├─────────────────────────────────────────────────────────────────────┤
 │                           BACKEND                                    │
 │                    (Spring Boot + Liquibase)                         │
-│                        Port 8080                                     │
+│                        Port 8081                                     │
 │  ┌─────────────┬─────────────┬─────────────┬─────────────┐          │
 │  │ Controllers │   Services  │ Repositories│ WebSocket   │          │
 │  └─────────────┴─────────────┴─────────────┴─────────────┘          │
 │  ┌─────────────┬─────────────┐                                       │
-│  │   Binance   │   Grok AI   │  (External Integrations)             │
+│  │Yahoo Finance│   Grok AI   │  (External Integrations)             │
 │  └─────────────┴─────────────┘                                       │
 ├─────────────────────────────────────────────────────────────────────┤
 │                           DATABASE                                   │
 │                      (PostgreSQL + Liquibase)                        │
-│                        Port 5432                                     │
+│                        Port 5433                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -34,7 +34,18 @@ A production-grade autonomous trading platform with AI-powered sentiment analysi
 - **Backend**: Java 21, Spring Boot 3.2, Spring Data JPA, Spring WebSocket
 - **Database**: PostgreSQL 15, Liquibase for migrations
 - **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS
-- **External APIs**: Binance Futures, Grok xAI
+- **External APIs**: Yahoo Finance (price data), Grok xAI (trading decisions)
+- **Broker**: CapTrader/IBKR (future integration, currently paper trading)
+
+## Stock Universe
+
+The platform focuses on highly liquid stocks in two sectors:
+
+### Tech Stocks
+AAPL, MSFT, GOOGL, AMZN, NVDA, TSLA, META, ADBE, CRM, INTC, CSCO, IBM, ORCL, SAP, ASML, TXN, QCOM, AMD, AVGO, MU
+
+### Defense Stocks
+LMT, RTX, BA, GD, NOC, LHX, HII, TDY, TXT, KBR, FLIR, OSK, VEC, AJRD, HEI, CW, ESMC, SRDX, IRDM, MAXR
 
 ## Quick Start
 
@@ -65,15 +76,15 @@ cd backend
 # Start frontend (in another terminal)
 cd frontend
 npm install
-npm run dev
+PORT=3100 npm run dev
 ```
 
 ### Access Points
 
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8080
-- **API Docs (Swagger)**: http://localhost:8080/swagger-ui.html
-- **Health Check**: http://localhost:8080/health
+- **Frontend**: http://localhost:3100
+- **Backend API**: http://localhost:8081
+- **API Docs (Swagger)**: http://localhost:8081/swagger-ui.html
+- **Health Check**: http://localhost:8081/health
 
 ## API Endpoints
 
@@ -116,12 +127,11 @@ npm run dev
 
 - `GET /health` - Health check
 - `GET /api/system/status` - System status
-- `GET /api/debug/prices` - Debug price data
 
 ## WebSocket Endpoints
 
-- `ws://localhost:8080/ws/equity` - Real-time equity streaming
-- `ws://localhost:8080/ws` - General event streaming
+- `ws://localhost:8081/ws/equity` - Real-time equity streaming
+- `ws://localhost:8081/ws` - General event streaming
 
 ## Environment Variables
 
@@ -129,22 +139,27 @@ npm run dev
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | `jdbc:postgresql://localhost:5432/trading` | Database connection URL |
+| `DATABASE_URL` | `jdbc:postgresql://localhost:5435/trading_stock` | Database connection URL |
 | `DB_USERNAME` | `postgres` | Database username |
 | `DB_PASSWORD` | `postgres` | Database password |
 | `XAI_API_KEY` | - | Grok xAI API key |
-| `BINANCE_API_KEY` | - | Binance API key (optional) |
-| `BINANCE_API_SECRET` | - | Binance API secret (optional) |
 | `MODE` | `paper` | Trading mode (paper/live) |
 | `CYCLE_INTERVAL` | `600000` | Trading cycle interval (ms) |
-| `STARTING_CAPITAL` | `100000` | Starting capital (USDT) |
+| `STARTING_CAPITAL` | `100000` | Starting capital (USD) |
 
 ### Frontend
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8080` | Backend API URL |
-| `NEXT_PUBLIC_WS_URL` | `ws://localhost:8080/ws/equity` | WebSocket URL |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8081` | Backend API URL |
+| `NEXT_PUBLIC_WS_URL` | `ws://localhost:8081/ws/equity` | WebSocket URL |
+
+## Market Hours
+
+The platform respects NYSE/NASDAQ trading hours:
+- **Trading Hours**: 9:30 AM - 4:00 PM ET (Monday - Friday)
+- **Holidays**: US stock market holidays are observed
+- **Outside Hours**: The system will analyze but not trade when market is closed
 
 ## Docker Deployment
 
@@ -162,14 +177,14 @@ docker-compose down
 ## Project Structure
 
 ```
-I-Need-A-Dollar/
+I-Need-A-Dollar-Stock-Edition/
 ├── backend/                    # Spring Boot backend
-│   ├── src/main/java/com/trading/
+│   ├── src/main/java/com/inad/stocks/
 │   │   ├── config/            # Configuration classes
 │   │   ├── controller/        # REST controllers
 │   │   ├── dto/               # Data transfer objects
 │   │   ├── entity/            # JPA entities
-│   │   ├── integration/       # External API clients
+│   │   ├── integration/       # External API clients (Grok, Yahoo Finance)
 │   │   ├── repository/        # JPA repositories
 │   │   ├── scheduler/         # Trading cycle scheduler
 │   │   ├── service/           # Business logic
@@ -181,20 +196,18 @@ I-Need-A-Dollar/
 │   ├── app/                   # Next.js app router
 │   ├── components/            # React components
 │   └── lib/                   # API client, hooks
-├── old/                        # Backup of Python implementation
-│   ├── backend-python/        # Original FastAPI backend
-│   └── frontend-nextjs/       # Original frontend
 ├── scripts/
 │   └── start-local.sh         # Local development script
 └── docker-compose.yml          # Docker configuration
 ```
 
-## Legacy Python Implementation
+## Future Roadmap
 
-The original Python/FastAPI implementation is preserved in the `old/` directory for reference:
-
-- `old/backend-python/` - FastAPI backend with asyncpg
-- `old/frontend-nextjs/` - Original Next.js frontend
+1. **CapTrader/IBKR Integration**: Replace Yahoo Finance mock with real broker API
+2. **Real-time Price Streaming**: WebSocket connection to broker for live prices
+3. **Order Execution**: Implement real order placement via IBKR Client Portal API
+4. **Options Trading**: Extend to options strategies on tech stocks
+5. **Portfolio Analytics**: Enhanced risk metrics and performance reporting
 
 ## License
 

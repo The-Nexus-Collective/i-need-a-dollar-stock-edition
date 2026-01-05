@@ -59,7 +59,7 @@ interface SystemStatusProps {
 const serviceIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   database: Database,
   redis: Radio,
-  binance: Zap,
+  yahoo_finance: Zap,
   grok: Bot,
 }
 

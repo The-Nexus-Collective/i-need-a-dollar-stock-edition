@@ -22,7 +22,7 @@ interface PreMortemData {
   signals: string[];
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 
 /**
  * A badge component that shows the Pre-Mortem status for a position.

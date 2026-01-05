@@ -8,4 +8,6 @@ export { DecisionLog } from './DecisionLog'
 export { SystemStatus } from './SystemStatus'
 export type { HealthData, ServiceStatus, LogEntry } from './SystemStatus'
 export { ActivityLog } from './ActivityLog'
+export { MarketStatusBanner, MarketStatusIndicator } from './MarketStatusBanner'
+export type { MarketStatus } from './MarketStatusBanner'
 

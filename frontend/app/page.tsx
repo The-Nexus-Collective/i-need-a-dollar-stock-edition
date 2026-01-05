@@ -24,19 +24,17 @@ import {
   ArrowDownRight,
   BookOpen,
   Plus,
-  Minus,
   X,
   Check,
   ChevronRight,
-  Gauge,
   Radio,
-  Wifi,
   WifiOff,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 
 import { Sidebar } from '@/components/Sidebar'
 import { MobileHeader } from '@/components/MobileHeader'
+import { MarketStatusBanner, type MarketStatus } from '@/components/MarketStatusBanner'
 import { api } from '@/lib/api'
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -50,16 +48,15 @@ interface PortfolioPosition {
   entry_price: number
   current_price: number
   quantity: number
-  size_usdt: number
-  leverage: number
+  size_usd: number
   conviction: number
   unrealized_pnl: number
   pnl_percent: number  // Backend sends pnl_percent, not unrealized_pnl_pct
-  liquidation_price: number
-  margin_risk_pct: number
   entry_time: string   // Backend sends entry_time, not opened_at
   reason?: string      // Optional - backend may send reasoning instead
   reasoning?: string | null  // Backend may send reasoning instead of reason
+  sector?: string | null
+  exchange?: string | null
 }
 
 interface PortfolioStatistics {
@@ -77,8 +74,6 @@ interface PortfolioStatistics {
   losing_trades: number
   win_rate: number
   total_fees: number
-  total_spread: number
-  total_slippage: number
   transactions: {
     total: number
     open: number
@@ -122,11 +117,11 @@ interface LogEntry {
   analysis_text: string
   market_summary: string
   positions_closed: Array<{ symbol: string; reason: string; pnl: number }>
-  positions_opened: Array<{ symbol: string; direction: string; conviction: number; leverage: number; reason: string }>
+  positions_opened: Array<{ symbol: string; direction: string; conviction: number; reason: string }>
   positions_extended?: Array<{ symbol: string; scale_percent: number; reason: string }>
   positions_reduced?: Array<{ symbol: string; scale_percent: number; reason: string }>
   positions_kept: string[]
-  coins_analyzed: number
+  stocks_analyzed: number
   tokens_used: number
   total_equity: number
   unrealized_pnl: number
@@ -142,12 +137,11 @@ interface EquityPoint {
 interface LivePositionData {
   symbol: string
   direction: string
-  size_usdt: number
+  size_usd: number
   unrealized_pnl: number
   pnl_percent: number  // Backend sends pnl_percent
   entry_price: number
   current_price: number
-  leverage: number
 }
 
 interface LiveEquityData {
@@ -216,19 +210,6 @@ function formatTimeAgo(timestamp: string | null | undefined): string {
   return date.toLocaleDateString()
 }
 
-function getMarginRiskColor(riskPct: number): string {
-  if (riskPct >= 70) return 'text-accent-red'
-  if (riskPct >= 50) return 'text-accent-amber'
-  if (riskPct >= 30) return 'text-yellow-500'
-  return 'text-accent-emerald'
-}
-
-function getMarginRiskLabel(riskPct: number): string {
-  if (riskPct >= 70) return 'DANGER'
-  if (riskPct >= 50) return 'WARNING'
-  if (riskPct >= 30) return 'ELEVATED'
-  return 'OK'
-}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ANIMATED VALUE COMPONENT
@@ -344,7 +325,7 @@ function PositionCard({
   liveData?: LivePositionData
 }) {
   const isLong = position.direction === 'LONG'
-  const coin = position.symbol?.replace('USDT', '') || 'UNKNOWN'
+  const stockSymbol = position.symbol || 'UNKNOWN'
   
   // Use live data if available, otherwise fall back to position data
   const currentPrice = liveData?.current_price ?? position.current_price ?? 0
@@ -376,7 +357,7 @@ function PositionCard({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-lg font-bold text-text-primary">{coin}</span>
+              <span className="text-lg font-bold text-text-primary">{stockSymbol}</span>
               <span className={clsx(
                 'px-2 py-0.5 text-xs font-bold rounded',
                 isLong 
@@ -385,11 +366,14 @@ function PositionCard({
               )}>
                 {position.direction}
               </span>
-              <span className="text-xs text-accent-cyan font-mono">{position.leverage}x</span>
+              {position.sector && (
+                <span className="text-xs text-accent-cyan font-mono">{position.sector}</span>
+              )}
             </div>
             <span className="text-xs text-text-muted flex items-center gap-1">
               <Clock className="w-3 h-3" />
               {formatTimeAgo(position.entry_time)}
+              {position.exchange && <span className="ml-1">• {position.exchange}</span>}
             </span>
           </div>
         </div>
@@ -439,42 +423,7 @@ function PositionCard({
         <div>
           <span className="text-xs text-text-muted block">Size</span>
           <span className="text-sm font-mono text-text-primary">
-            ${position.size_usdt.toFixed(0)}
-          </span>
-        </div>
-      </div>
-      
-      {/* Risk Gauge */}
-      <div className="flex items-center gap-3 mb-3">
-        <div className="flex-1">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-text-muted flex items-center gap-1">
-              <Gauge className="w-3 h-3" />
-              Margin Risk
-            </span>
-            <span className={clsx(
-              'text-xs font-bold',
-              getMarginRiskColor(position.margin_risk_pct)
-            )}>
-              {getMarginRiskLabel(position.margin_risk_pct)}
-            </span>
-          </div>
-          <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
-            <div 
-              className={clsx(
-                'h-full rounded-full transition-all',
-                position.margin_risk_pct >= 70 ? 'bg-accent-red' :
-                position.margin_risk_pct >= 50 ? 'bg-accent-amber' :
-                position.margin_risk_pct >= 30 ? 'bg-yellow-500' : 'bg-accent-emerald'
-              )}
-              style={{ width: `${Math.min(position.margin_risk_pct, 100)}%` }}
-            />
-          </div>
-        </div>
-        <div className="text-right">
-          <span className="text-xs text-text-muted block">Liquidation</span>
-          <span className="text-xs font-mono text-accent-red">
-            {position.liquidation_price ? `$${position.liquidation_price.toLocaleString()}` : '-'}
+            ${position.size_usd.toFixed(0)}
           </span>
         </div>
       </div>
@@ -791,13 +740,16 @@ export default function Dashboard() {
   const [countdown, setCountdown] = useState<string>('')
   const [progressCurrent, setProgressCurrent] = useState<number>(0)
   const [progressTotal, setProgressTotal] = useState<number>(0)
+  
+  // Market status state
+  const [marketStatus, setMarketStatus] = useState<MarketStatus | null>(null)
 
   // WebSocket connection for real-time equity updates
   useEffect(() => {
     const connectWebSocket = () => {
       try {
         // Build WebSocket URL - append /equity to base URL if needed
-        const wsBase = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws'
+        const wsBase = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8081/ws'
         const wsUrl = wsBase.endsWith('/equity') ? wsBase : `${wsBase}/equity`
         const ws = new WebSocket(wsUrl)
         wsRef.current = ws
@@ -911,7 +863,7 @@ export default function Dashboard() {
       try {
         const [statusData, logData] = await Promise.all([
           api.getPortfolioManagerStatus().catch(e => { console.error('PM status error:', e); return null }),
-          fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/logbook?limit=10`)
+          fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081'}/api/logbook?limit=10`)
             .then(r => r.ok ? r.json() : [])
             .catch(e => { console.error('Logbook error:', e); return [] }),
         ])
@@ -962,16 +914,33 @@ export default function Dashboard() {
   const handleTriggerCycle = useCallback(async () => {
     if (triggeringCycle || currentPhase !== 'idle') return
     
+    // Check market status before triggering
+    if (marketStatus && !marketStatus.trading_allowed) {
+      setError(`Cannot run analysis - ${marketStatus.description}`)
+      return
+    }
+    
     setTriggeringCycle(true)
     try {
       await api.triggerCycle()
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to trigger cycle:', e)
-      setError('Failed to trigger cycle')
+      // Parse error message if it's a market closed error
+      const errorMessage = e?.message || 'Failed to trigger cycle'
+      if (errorMessage.toLowerCase().includes('market') || errorMessage.toLowerCase().includes('closed')) {
+        setError('Cannot run analysis - Market is closed')
+      } else {
+        setError(errorMessage)
+      }
     } finally {
       setTriggeringCycle(false)
     }
-  }, [triggeringCycle, currentPhase])
+  }, [triggeringCycle, currentPhase, marketStatus])
+  
+  // Market status change handler
+  const handleMarketStatusChange = useCallback((status: MarketStatus) => {
+    setMarketStatus(status)
+  }, [])
 
   // Loading state
   if (loading) {
@@ -985,7 +954,7 @@ export default function Dashboard() {
           <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-accent-cyan to-accent-emerald flex items-center justify-center shadow-glow-cyan-intense">
             <Brain className="w-10 h-10 text-void animate-pulse" />
           </div>
-          <h1 className="text-xl font-semibold gradient-text mb-2">Portfolio Manager</h1>
+          <h1 className="text-xl font-semibold gradient-text mb-2">Stock Portfolio Manager</h1>
           <p className="text-text-muted text-sm">Loading portfolio...</p>
         </motion.div>
       </div>
@@ -1005,7 +974,7 @@ export default function Dashboard() {
         <MobileHeader 
           onMenuClick={() => setMobileMenuOpen(true)}
           isConnected={wsConnected}
-          title="Portfolio Manager"
+          title="Stock Portfolio"
         />
 
         <div className="p-4 md:p-6 lg:p-8">
@@ -1018,7 +987,7 @@ export default function Dashboard() {
               className="text-2xl font-semibold text-text-primary tracking-tight flex items-center gap-3"
             >
               <Brain className="w-7 h-7 text-accent-cyan" />
-              Portfolio Manager
+              Stock Portfolio Manager
               {/* Dynamic Phase Indicator */}
               <AnimatePresence mode="wait">
                 <motion.span 
@@ -1077,20 +1046,25 @@ export default function Dashboard() {
             
             <button
               onClick={handleTriggerCycle}
-              disabled={triggeringCycle || currentPhase !== 'idle'}
+              disabled={triggeringCycle || currentPhase !== 'idle' || Boolean(marketStatus && !marketStatus.trading_allowed)}
+              title={marketStatus && !marketStatus.trading_allowed ? `Market is ${marketStatus.status.toLowerCase()}` : undefined}
               className={clsx(
                 'flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all',
-                currentPhase === 'idle' && !triggeringCycle
+                currentPhase === 'idle' && !triggeringCycle && (!marketStatus || marketStatus.trading_allowed)
                   ? 'bg-accent-emerald/20 text-accent-emerald border border-accent-emerald/40 hover:bg-accent-emerald/30'
-                  : 'bg-surface-2 text-text-muted border border-surface-3 cursor-not-allowed'
+                  : marketStatus && !marketStatus.trading_allowed
+                    ? 'bg-slate-500/10 text-slate-400 border border-slate-500/30 cursor-not-allowed'
+                    : 'bg-surface-2 text-text-muted border border-surface-3 cursor-not-allowed'
               )}
             >
               {triggeringCycle ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
+              ) : marketStatus && !marketStatus.trading_allowed ? (
+                <Clock className="w-4 h-4" />
               ) : (
                 <Play className="w-4 h-4" />
               )}
-              Run Analysis
+              {marketStatus && !marketStatus.trading_allowed ? 'Market Closed' : 'Run Analysis'}
             </button>
             <button
               onClick={() => window.location.reload()}
@@ -1101,9 +1075,21 @@ export default function Dashboard() {
           </div>
         </header>
 
+        {/* Market Status Banner */}
+        <MarketStatusBanner 
+          className="mb-6" 
+          onStatusChange={handleMarketStatusChange}
+        />
+
         {error && (
-          <div className="mb-6 p-4 bg-accent-red/10 border border-accent-red/30 rounded-lg text-accent-red">
-            {error}
+          <div className="mb-6 p-4 bg-accent-red/10 border border-accent-red/30 rounded-lg text-accent-red flex items-center justify-between">
+            <span>{error}</span>
+            <button 
+              onClick={() => setError(null)}
+              className="text-accent-red/70 hover:text-accent-red"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         )}
 
@@ -1292,7 +1278,7 @@ export default function Dashboard() {
                 <div className="text-center py-12 text-text-muted">
                   <Shield className="w-12 h-12 mx-auto mb-4 opacity-20" />
                   <p className="font-medium mb-1">No open positions</p>
-                  <p className="text-sm text-text-dim">Grok is analyzing the market for opportunities...</p>
+                  <p className="text-sm text-text-dim">Grok is analyzing stocks for opportunities...</p>
                 </div>
               )}
             </motion.div>

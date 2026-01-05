@@ -451,13 +451,13 @@ export default function SettingsPage() {
 
               <div className="p-4 rounded-lg bg-void/30 border border-glass-border">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-text-primary">Binance API Key</span>
+                  <span className="text-sm font-medium text-text-primary">CapTrader/IBKR API</span>
                   <span className="px-2 py-0.5 rounded-full text-xs bg-accent-amber/20 text-accent-amber">
-                    Optional (Live Mode)
+                    Future Feature
                   </span>
                 </div>
                 <p className="text-xs text-text-muted">
-                  Only required for live trading. Paper mode uses public API.
+                  For live stock trading. Paper mode uses Yahoo Finance for prices.
                 </p>
               </div>
             </div>
@@ -485,7 +485,7 @@ export default function SettingsPage() {
                 </h3>
                 <p className="text-xs text-text-muted mt-1">
                   Delete all paper trades, positions, and trading history. 
-                  The system will restart with initial capital of $100,000 USDT.
+                  The system will restart with initial capital of $100,000 USD.
                   This action cannot be undone.
                 </p>
                 

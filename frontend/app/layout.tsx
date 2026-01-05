@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'I Need A Dollar | AI Trading Terminal',
-  description: 'Production-grade autonomous trading platform with AI-powered sentiment analysis',
+  title: 'I Need A Dollar Stock Edition | AI Trading Terminal',
+  description: 'Production-grade autonomous stock trading platform with AI-powered sentiment analysis',
   icons: {
     icon: '/favicon.ico',
   },

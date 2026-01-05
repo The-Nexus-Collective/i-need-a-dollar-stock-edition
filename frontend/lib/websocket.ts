@@ -53,7 +53,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     }
 
     // Compute WebSocket URL - use backend directly
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws'
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8081/ws'
     const url = `${wsUrl}?channel=${channel}`
 
     try {

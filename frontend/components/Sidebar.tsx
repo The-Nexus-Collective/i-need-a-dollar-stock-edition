@@ -8,14 +8,12 @@ import {
   LayoutDashboard,
   TrendingUp,
   History,
-  Shield,
   Settings,
   ChevronLeft,
   ChevronRight,
   Wallet,
   Activity,
   Zap,
-  AlertTriangle,
   BookOpen,
   Brain,
   X,
@@ -35,13 +33,12 @@ const navItems = [
   { icon: Brain, label: 'Learning', href: '/learning' },
   { icon: BookOpen, label: 'Logbook', href: '/logbook' },
   { icon: History, label: 'History', href: '/history' },
-  { icon: Shield, label: 'Risk', href: '/risk' },
   { icon: Settings, label: 'Settings', href: '/settings' },
 ]
 
 export function Sidebar({ isConnected, mobileOpen = false, onMobileClose }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
-  const { portfolio, marginHealth } = usePortfolio(3000)
+  const { portfolio } = usePortfolio(3000)
   const pathname = usePathname()
 
   // Close mobile sidebar on route change
@@ -73,33 +70,7 @@ export function Sidebar({ isConnected, mobileOpen = false, onMobileClose }: Side
   const totalSpread = isNaN(portfolio?.totalSpread) ? 0 : (portfolio?.totalSpread ?? 0)
   const totalSlippage = isNaN(portfolio?.totalSlippage) ? 0 : (portfolio?.totalSlippage ?? 0)
 
-  const marginStatusConfig = {
-    safe: {
-      dotClass: 'bg-accent-emerald shadow-[0_0_8px_rgba(0,255,136,0.5)]',
-      textClass: 'text-accent-emerald',
-      label: 'Margin OK',
-    },
-    warning: {
-      dotClass: 'bg-accent-amber shadow-[0_0_8px_rgba(255,170,51,0.5)] animate-pulse',
-      textClass: 'text-accent-amber',
-      label: 'Margin Warning',
-    },
-    danger: {
-      dotClass: 'bg-accent-red shadow-[0_0_8px_rgba(255,71,87,0.5)] animate-pulse',
-      textClass: 'text-accent-red',
-      label: 'Margin Risk',
-    },
-    critical: {
-      dotClass: 'bg-accent-red shadow-[0_0_12px_rgba(255,71,87,0.7)] animate-pulse',
-      textClass: 'text-accent-red',
-      label: 'MARGIN CRITICAL',
-    },
-  }
-  
-  const marginStatus = marginHealth?.overall_status ?? 'safe'
-  const marginConfig = marginStatusConfig[marginStatus]
-  const atRiskCount = (marginHealth?.positions_warning ?? 0) + (marginHealth?.positions_danger ?? 0)
-  const totalPositions = marginHealth?.total_positions ?? 0
+  const openPositions = portfolio?.openPositions ?? 0
 
   // Determine if we should show expanded content (not collapsed on desktop, always expanded on mobile)
   const showExpanded = mobileOpen ? true : !collapsed
@@ -119,8 +90,8 @@ export function Sidebar({ isConnected, mobileOpen = false, onMobileClose }: Side
           <div>
             <h1 className="font-semibold text-text-primary tracking-tight text-sm whitespace-nowrap">I Need A Dollar</h1>
             <p className="text-[10px] text-text-muted uppercase tracking-widest">AI Trading Terminal</p>
-            <span className="px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide bg-gradient-to-r from-purple-500/20 to-violet-500/20 text-purple-400 border border-purple-500/40 rounded inline-block mt-0.5">
-              Crypto-Edition
+            <span className="px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 text-emerald-400 border border-emerald-500/40 rounded inline-block mt-0.5">
+              Stock Edition
             </span>
           </div>
         </motion.div>
@@ -163,45 +134,35 @@ export function Sidebar({ isConnected, mobileOpen = false, onMobileClose }: Side
           </AnimatePresence>
         </div>
         
-        {/* Margin health indicator */}
-        <Link href="/risk" className="block" onClick={onMobileClose}>
+        {/* Position count indicator */}
+        <div className={clsx(
+          'flex items-center gap-2 transition-opacity',
+          openPositions === 0 && 'opacity-50'
+        )}>
           <div className={clsx(
-            'flex items-center gap-2 transition-opacity',
-            totalPositions === 0 && 'opacity-50'
-          )}>
-            <div className={clsx('w-2 h-2 rounded-full', marginConfig.dotClass)} />
-            <AnimatePresence mode="wait">
-              {showExpanded && (
-                <motion.div
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  className="flex items-center gap-1.5"
-                >
-                  <span className={clsx('text-xs font-medium uppercase tracking-wider', marginConfig.textClass)}>
-                    {totalPositions === 0 ? 'No Positions' : `${totalPositions} Position${totalPositions > 1 ? 's' : ''}`}
-                  </span>
-                  {atRiskCount > 0 && (
-                    <span className={clsx(
-                      'px-1.5 py-0.5 text-[10px] font-bold rounded',
-                      marginStatus === 'warning' 
-                        ? 'bg-accent-amber/20 text-accent-amber'
-                        : 'bg-accent-red/20 text-accent-red'
-                    )}>
-                      {atRiskCount}
-                    </span>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-            {!showExpanded && atRiskCount > 0 && (
-              <AlertTriangle className={clsx(
-                'w-3 h-3 absolute right-2',
-                marginStatus === 'warning' ? 'text-accent-amber' : 'text-accent-red'
-              )} />
+            'w-2 h-2 rounded-full',
+            openPositions > 0 
+              ? 'bg-accent-cyan shadow-[0_0_8px_rgba(0,212,255,0.5)]' 
+              : 'bg-text-muted'
+          )} />
+          <AnimatePresence mode="wait">
+            {showExpanded && (
+              <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                className="flex items-center gap-1.5"
+              >
+                <span className={clsx(
+                  'text-xs font-medium uppercase tracking-wider',
+                  openPositions > 0 ? 'text-accent-cyan' : 'text-text-muted'
+                )}>
+                  {openPositions === 0 ? 'No Positions' : `${openPositions} Position${openPositions > 1 ? 's' : ''}`}
+                </span>
+              </motion.div>
             )}
-          </div>
-        </Link>
+          </AnimatePresence>
+        </div>
       </div>
 
       {/* Navigation */}

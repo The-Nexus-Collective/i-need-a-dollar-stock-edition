@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "=== I Need A Dollar - Local Development ==="
+echo "=== I Need A Dollar Stock Edition - Local Development ==="
 echo ""
 
 # Colors
@@ -33,13 +33,40 @@ fi
 
 echo -e "${GREEN}Java found: $(java -version 2>&1 | head -1)${NC}"
 
-# Kill any existing processes on required ports
+# Gracefully stop any existing processes on required ports
 echo ""
 echo -e "${YELLOW}Cleaning up existing processes...${NC}"
-lsof -ti:8080 | xargs kill -9 2>/dev/null && echo "  Killed process on port 8080" || true
-lsof -ti:3000 | xargs kill -9 2>/dev/null && echo "  Killed process on port 3000" || true
-pkill -f "gradlew" 2>/dev/null && echo "  Killed Gradle processes" || true
-pkill -f "next-server" 2>/dev/null && echo "  Killed Next.js processes" || true
+
+# Stop Docker containers gracefully first
+if docker compose ps -q 2>/dev/null | grep -q .; then
+    echo "  Stopping Docker containers..."
+    docker compose stop 2>/dev/null && echo "  Docker containers stopped" || true
+fi
+
+# Gracefully terminate processes (SIGTERM first, then SIGKILL after timeout)
+stop_process_on_port() {
+    local port=$1
+    local pids=$(lsof -ti:$port 2>/dev/null)
+    if [ -n "$pids" ]; then
+        echo "  Stopping process on port $port..."
+        echo "$pids" | xargs kill -TERM 2>/dev/null || true
+        sleep 2
+        # Force kill only if still running
+        pids=$(lsof -ti:$port 2>/dev/null)
+        if [ -n "$pids" ]; then
+            echo "$pids" | xargs kill -9 2>/dev/null || true
+        fi
+    fi
+}
+
+stop_process_on_port 8081
+stop_process_on_port 3100
+
+# Gracefully stop Gradle processes (only for this project)
+pkill -TERM -f "gradlew.*I-Need-A-Dollar" 2>/dev/null && echo "  Stopped Gradle processes" || true
+# Note: We only kill Next.js on our port (3100) via stop_process_on_port above
+# to avoid killing other Next.js projects running on different ports
+sleep 1
 echo -e "${GREEN}Cleanup complete${NC}"
 
 # Get script directory
@@ -52,12 +79,34 @@ cd "$PROJECT_DIR"
 cleanup() {
     echo ""
     echo -e "${YELLOW}Shutting down services...${NC}"
+    
+    # Gracefully stop backend process
     if [ -n "$BACKEND_PID" ]; then
-        kill $BACKEND_PID 2>/dev/null || true
+        echo "  Stopping backend (PID: $BACKEND_PID)..."
+        kill -TERM $BACKEND_PID 2>/dev/null || true
+        # Wait up to 10 seconds for graceful shutdown
+        for i in {1..10}; do
+            if ! kill -0 $BACKEND_PID 2>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
+        # Force kill if still running
+        kill -9 $BACKEND_PID 2>/dev/null || true
     fi
+    
+    # Gracefully stop frontend process
     if [ -n "$FRONTEND_PID" ]; then
-        kill $FRONTEND_PID 2>/dev/null || true
+        echo "  Stopping frontend (PID: $FRONTEND_PID)..."
+        kill -TERM $FRONTEND_PID 2>/dev/null || true
+        sleep 2
+        kill -9 $FRONTEND_PID 2>/dev/null || true
     fi
+    
+    # Stop Docker containers gracefully (but keep them for next run)
+    echo "  Stopping Docker services..."
+    docker compose stop 2>/dev/null || true
+    
     echo -e "${GREEN}Shutdown complete${NC}"
 }
 
@@ -65,7 +114,7 @@ trap cleanup EXIT
 
 # Check if PostgreSQL is running
 echo -e "${YELLOW}Checking PostgreSQL...${NC}"
-if ! pg_isready -q 2>/dev/null && ! docker-compose ps postgres 2>/dev/null | grep -q "Up"; then
+if ! pg_isready -p 5435 -q 2>/dev/null && ! docker-compose ps postgres 2>/dev/null | grep -q "Up"; then
     echo "Starting PostgreSQL via Docker..."
     docker-compose up -d postgres
     echo "Waiting for PostgreSQL to be ready..."
@@ -117,7 +166,7 @@ cd ..
 echo "Waiting for backend to start..."
 MAX_WAIT=120
 WAIT_COUNT=0
-until curl -s http://localhost:8080/health > /dev/null 2>&1; do
+until curl -s http://localhost:8081/health > /dev/null 2>&1; do
     sleep 1
     WAIT_COUNT=$((WAIT_COUNT + 1))
     if [ $WAIT_COUNT -ge $MAX_WAIT ]; then
@@ -128,28 +177,28 @@ until curl -s http://localhost:8080/health > /dev/null 2>&1; do
         echo "  Still waiting... (${WAIT_COUNT}s)"
     fi
 done
-echo -e "${GREEN}Backend ready at http://localhost:8080${NC}"
-echo -e "${GREEN}API docs at http://localhost:8080/swagger-ui.html${NC}"
+echo -e "${GREEN}Backend ready at http://localhost:8081${NC}"
+echo -e "${GREEN}API docs at http://localhost:8081/swagger-ui.html${NC}"
 
 # Start frontend
 echo ""
 echo -e "${YELLOW}Starting Next.js frontend...${NC}"
 cd frontend
-npm run dev &
+PORT=3100 npm run dev &
 FRONTEND_PID=$!
 cd ..
 
 # Wait for frontend
 sleep 3
-echo -e "${GREEN}Frontend ready at http://localhost:3000${NC}"
+echo -e "${GREEN}Frontend ready at http://localhost:3100${NC}"
 
 echo ""
 echo "============================================"
 echo -e "${GREEN}All services started!${NC}"
 echo ""
-echo "  Backend:  http://localhost:8080"
-echo "  Frontend: http://localhost:3000"
-echo "  API Docs: http://localhost:8080/swagger-ui.html"
+echo "  Backend:  http://localhost:8081"
+echo "  Frontend: http://localhost:3100"
+echo "  API Docs: http://localhost:8081/swagger-ui.html"
 echo ""
 echo "Press Ctrl+C to stop all services"
 echo "============================================"

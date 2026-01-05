@@ -12,5 +12,4 @@ spring:
 logging:
   level:
     root: INFO
-    com.trading: INFO
-
+    com.inad.stocks: INFO

@@ -55,24 +55,25 @@ interface LedgerEntry {
 interface Transaction {
   transactionId: string
   timestamp: string
-  transactionType: 'OPEN' | 'CLOSE' | 'EXTEND' | 'REDUCE' | 'RESET' | 'MARGIN_CALL'
+  transactionType: 'OPEN' | 'CLOSE' | 'EXTEND' | 'REDUCE' | 'RESET' | 'FEE'
   transactionTypeDisplay: string
   positionId: string | null
   symbol: string | null
   direction: string | null
   price: number | null
   quantity: number | null
-  sizeUsdt: number | null
-  leverage: number | null
+  sizeUsd: number | null
   conviction: number | null
   reason: string | null
   fee: number
-  spread: number
-  slippage: number
   totalCosts: number
   grossPnl: number
   netPnl: number
   pnlPercent: number
+  positionSizeBefore: number | null
+  positionSizeAfter: number | null
+  avgEntryBefore: number | null
+  avgEntryAfter: number | null
   ledgerEntries: LedgerEntry[] | null
   ledgerEntryCount: number
 }
@@ -302,11 +303,11 @@ function TransactionRow({
         {/* Symbol */}
         <td className="py-4 px-4">
           <span className="font-semibold text-text-primary">
-            {symbol.replace('USDT', '')}
+            {symbol}
           </span>
-          {txn.leverage && txn.direction && (
+          {txn.direction && (
             <p className="text-xs text-text-muted">
-              {txn.leverage}x {isLong ? 'Long' : 'Short'}
+              {isLong ? 'Long' : 'Short'}
             </p>
           )}
         </td>
@@ -319,7 +320,7 @@ function TransactionRow({
         {/* Size */}
         <td className="py-4 px-4 text-right">
           <span className="font-mono text-text-primary">
-            {formatCurrency(txn.sizeUsdt)}
+            {formatCurrency(txn.sizeUsd)}
           </span>
         </td>
 

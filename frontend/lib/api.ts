@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081'
 
 interface FetchOptions extends RequestInit {
   token?: string
@@ -9,7 +9,7 @@ interface LedgerEntry {
   id: number
   transactionId: string
   timestamp: string
-  transactionType: 'OPEN' | 'CLOSE' | 'EXTEND' | 'REDUCE' | 'RESET' | 'FEE' | 'MARGIN_CALL'
+  transactionType: 'OPEN' | 'CLOSE' | 'EXTEND' | 'REDUCE' | 'RESET' | 'FEE'
   positionId: string | null
   account: 'CASH' | 'POSITIONS' | 'REALIZED_PNL' | 'TRADING_COSTS' | 'STARTING_CAPITAL'
   debit: number
@@ -25,20 +25,17 @@ interface LedgerEntry {
 interface Transaction {
   transactionId: string
   timestamp: string
-  transactionType: 'OPEN' | 'CLOSE' | 'EXTEND' | 'REDUCE' | 'RESET' | 'MARGIN_CALL'
+  transactionType: 'OPEN' | 'CLOSE' | 'EXTEND' | 'REDUCE' | 'RESET' | 'FEE'
   transactionTypeDisplay: string
   positionId: string | null
   symbol: string | null
   direction: string | null
   price: number | null
   quantity: number | null
-  sizeUsdt: number | null
-  leverage: number | null
+  sizeUsd: number | null
   conviction: number | null
   reason: string | null
   fee: number
-  spread: number
-  slippage: number
   totalCosts: number
   grossPnl: number
   netPnl: number
@@ -151,8 +148,7 @@ class ApiClient {
       direction: string
       quantity: number
       entry_price: number
-      size_usdt: number
-      leverage: number
+      size_usd: number
       stop_loss_price: number | null
       take_profit_price: number | null
       status: string
@@ -162,6 +158,8 @@ class ApiClient {
       realized_pnl: number
       conviction: number
       reasoning: string | null
+      exchange: string | null
+      sector: string | null
     }>>(`/api/positions?status=${status}`)
   }
 
@@ -169,7 +167,7 @@ class ApiClient {
   async getTrades(limit = 100) {
     return this.fetch<Array<{
       id: string
-      coin: string
+      symbol: string
       side: string
       order_type: string
       quantity: number
@@ -293,7 +291,7 @@ class ApiClient {
     return this.fetch<Array<{
       id: string
       timestamp: string
-      coin: string
+      symbol: string
       sentiment_score: number
       narrative_strength: number
       combined_score: number
@@ -308,66 +306,13 @@ class ApiClient {
     return this.fetch<Record<string, {
       id: string
       timestamp: string
-      coin: string
+      symbol: string
       sentiment_score: number
       narrative_strength: number
       combined_score: number
       confidence: number
       recommended_action: string
     }>>('/api/signals/latest')
-  }
-
-  // Risk
-  async getRiskEvents(severity?: string, limit = 100) {
-    const params = new URLSearchParams()
-    if (severity) params.set('severity', severity)
-    params.set('limit', limit.toString())
-    
-    return this.fetch<Array<{
-      id: string
-      timestamp: string
-      event_type: string
-      severity: string
-      trigger_value: number
-      threshold_value: number
-      action_taken: string
-      details: any
-      acknowledged: boolean
-    }>>(`/api/risk/events?${params}`)
-  }
-
-  async acknowledgeRiskEvent(eventId: string) {
-    return this.fetch<{ status: string; event_id: string }>(`/api/risk/acknowledge/${eventId}`, {
-      method: 'POST',
-    })
-  }
-
-  async getMarginHealth() {
-    return this.fetch<{
-      overall_status: 'safe' | 'warning' | 'danger' | 'critical'
-      summary: {
-        total_positions: number
-        positions_safe: number
-        positions_warning: number
-        positions_danger: number
-        total_margin_used: number
-        margin_utilization_pct: number
-        closest_to_liq_pct: number | null
-      }
-      positions: Array<{
-        coin: string
-        side: string
-        leverage: number
-        entry_price: number
-        current_price: number
-        liquidation_price: number
-        distance_to_liq_pct: number
-        price_change_pct: number
-        margin_used: number
-        status: 'safe' | 'warning' | 'danger' | 'liquidated'
-      }>
-      error?: string
-    }>('/api/risk/margin-health')
   }
 
   // Audit
@@ -419,27 +364,23 @@ class ApiClient {
       timestamp: string
       websocket_connections: number
       event_streams: Record<string, any>
-      volatility_regime: {
-        regime: string
-        regime_display: string
-        threshold: number
-        btc_atr_percent: number
+      market_status: {
+        is_open: boolean
+        next_open: string | null
+        next_close: string | null
       }
     }>('/api/system/status')
   }
 
-  async getVolatilityRegime() {
+  async getMarketRegime() {
     return this.fetch<{
+      is_open: boolean
       regime: string
       regime_display: string
-      threshold: number
-      btc_atr_percent: number
-      thresholds: {
-        high_vol: number
-        normal: number
-        low_vol: number
-      }
-    }>('/api/system/regime')
+      vix_level: number | null
+      next_open: string | null
+      next_close: string | null
+    }>('/api/system/market-regime')
   }
 
   // Health Check
@@ -528,6 +469,21 @@ class ApiClient {
 
   async getMarketStatus() {
     return this.fetch<{
+      status: 'OPEN' | 'CLOSED' | 'PRE_MARKET' | 'AFTER_HOURS'
+      description: string
+      detail: string
+      is_open: boolean
+      trading_allowed: boolean
+      seconds_until_open: number | null
+      seconds_until_close: number | null
+      next_open: string | null
+      next_close: string | null
+      next_open_display: string | null
+    }>('/api/market-status')
+  }
+
+  async getStocksMarketStatus() {
+    return this.fetch<{
       is_open: boolean
       current_time: string
       timezone: string
@@ -553,12 +509,6 @@ class ApiClient {
 
   async getUnifiedRegime() {
     return this.fetch<{
-      crypto: {
-        regime: string
-        regime_display: string
-        threshold: number
-        btc_atr_percent: number
-      }
       stock: {
         vix_value: number
         regime: string
@@ -570,16 +520,9 @@ class ApiClient {
     }>('/api/stocks/unified-regime')
   }
 
-  async getMultiPortfolio() {
+  async getStockPortfolio() {
     return this.fetch<{
       timestamp: string
-      crypto: {
-        equity: number
-        currency: string
-        positions: number
-        pnl: number
-        pnl_pct: number
-      }
       stock: {
         equity: number
         currency: string
@@ -613,29 +556,26 @@ class ApiClient {
 
   async getUniverse(status: string = 'approved', limit: number = 100) {
     return this.fetch<Array<{
-      coin: string
+      symbol: string
       name: string
-      volume_24h: number
-      market_cap: number
+      sector: string
+      exchange: string
       price_usd: number
       price_change_24h: number
-      hype_score: number
+      volume_24h: number
+      market_cap: number
       sentiment_score: number
       narrative_strength: number
-      discovery_source: string
-      discovered_at: string | null
     }>>(`/api/universe?status=${status}&limit=${limit}`)
   }
 
   async getUniverseStats() {
     return this.fetch<{
-      approved_count: number
-      pending_count: number
-      rejected_count: number
-      coingecko_count: number
-      x_discovery_count: number
-      total_volume: number
-      avg_hype_score: number
+      tech_count: number
+      defense_count: number
+      total_count: number
+      total_market_cap: number
+      avg_sentiment_score: number
     }>('/api/universe/stats')
   }
 
@@ -673,32 +613,25 @@ class ApiClient {
       importance: number
       recall_count: number
       created_at: string
-      coins: string[]
+      symbols: string[]
     }>>(`/api/memories?${searchParams}`)
   }
 
-  async getXDiscoveries(processed?: boolean, limit: number = 50) {
+  async getNewsDiscoveries(processed?: boolean, limit: number = 50) {
     const searchParams = new URLSearchParams()
     if (processed !== undefined) searchParams.set('processed', processed.toString())
     searchParams.set('limit', limit.toString())
     
     return this.fetch<Array<{
       id: string
-      coin: string
-      tweet_id: string
-      tweet_text: string
-      author: string
-      engagement: {
-        likes: number
-        retweets: number
-        score: number
-      }
-      narrative: string
+      symbol: string
+      source: string
+      headline: string
+      content: string
       sentiment: number | null
       discovered_at: string
       processed: boolean
-      added_to_universe: boolean
-    }>>(`/api/x/discoveries?${searchParams}`)
+    }>>(`/api/news/discoveries?${searchParams}`)
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -723,13 +656,12 @@ class ApiClient {
           direction: string
           entry_price: number
           quantity: number
-          size_usdt: number
-          leverage: number
+          size_usd: number
           conviction: number
           opened_at: string
         }>
       }
-      top_coins_count: number
+      top_stocks_count: number
       cycle_interval_seconds: number
       mode: string
     }>('/api/trader/status')
@@ -740,10 +672,9 @@ class ApiClient {
       id: string
       cycle_id: string
       cycle_number: number
-      coin: string
+      symbol: string
       direction: string
       conviction: number
-      leverage: number
       reason: string
       created_at: string
     }>>(`/api/trader/predictions?limit=${limit}`)
@@ -758,7 +689,7 @@ class ApiClient {
       capital_before: number
       capital_after: number
       total_pnl: number
-      coins_traded: string[]
+      stocks_traded: string[]
       status: string
       prediction_count: number
       avg_conviction: number
@@ -875,6 +806,7 @@ class ApiClient {
       cycle_count: number
       cycle_interval_seconds: number
       mode: string
+      market_open: boolean
       portfolio: {
         positions: Array<{
           id: string
@@ -883,15 +815,14 @@ class ApiClient {
           entry_price: number
           current_price: number
           quantity: number
-          size_usdt: number
-          leverage: number
+          size_usd: number
           conviction: number
           unrealized_pnl: number
           pnl_percent: number         // Backend sends pnl_percent
-          liquidation_price: number
-          margin_risk_pct: number
           entry_time: string          // Backend sends entry_time
           reasoning: string | null    // Backend sends reasoning
+          sector: string | null
+          exchange: string | null
         }>
         statistics: {
           starting_capital: number
@@ -908,8 +839,6 @@ class ApiClient {
           losing_trades: number
           win_rate: number
           total_fees: number
-          total_spread: number
-          total_slippage: number
           transactions: {
             total: number
             open: number

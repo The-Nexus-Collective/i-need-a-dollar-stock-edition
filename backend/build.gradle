@@ -4,7 +4,7 @@ plugins {
     id 'io.spring.dependency-management' version '1.1.4'
 }
 
-group = 'com.trading'
+group = 'com.inad.stocks'
 version = '1.0.0'
 
 java {
@@ -42,7 +42,7 @@ dependencies {
     // HTTP Client for external APIs
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     
-    // WebSocket Client for Binance
+    // WebSocket Client for market data
     implementation 'org.java-websocket:Java-WebSocket:1.5.4'
     
     // Lombok

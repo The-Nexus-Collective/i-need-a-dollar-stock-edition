@@ -129,9 +129,9 @@ export function usePortfolio(refreshInterval = 5000) {
           winRate: stats.win_rate ?? 0,
           totalVolume: 0,
           totalFees: stats.total_fees ?? 0,
-          totalSpread: stats.total_spread ?? 0,
-          totalSlippage: stats.total_slippage ?? 0,
-          totalTradingCosts: (stats.total_fees ?? 0) + (stats.total_spread ?? 0) + (stats.total_slippage ?? 0),
+          totalSpread: (stats as any).total_spread ?? 0,
+          totalSlippage: (stats as any).total_slippage ?? 0,
+          totalTradingCosts: (stats.total_fees ?? 0) + ((stats as any).total_spread ?? 0) + ((stats as any).total_slippage ?? 0),
           maxDrawdown: 0,
         })
         setError(null)
@@ -149,7 +149,7 @@ export function usePortfolio(refreshInterval = 5000) {
     const connectWebSocket = () => {
       try {
         // Build WebSocket URL - append /equity to base URL if needed
-        const wsBase = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws'
+        const wsBase = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8081/ws'
         const wsUrl = wsBase.endsWith('/equity') ? wsBase : `${wsBase}/equity`
         const ws = new WebSocket(wsUrl)
         wsRef.current = ws
