@@ -17,7 +17,7 @@ services:
     github:
       repo: The-Nexus-Collective/i-need-a-dollar-stock-edition
       branch: main
-      deploy_on_push: true
+      deploy_on_push: false
     http_port: 8080
     instance_count: 1
     instance_size_slug: professional-xs
@@ -88,7 +88,7 @@ services:
     github:
       repo: The-Nexus-Collective/i-need-a-dollar-stock-edition
       branch: main
-      deploy_on_push: true
+      deploy_on_push: false
     http_port: 3000
     instance_count: 1
     instance_size_slug: professional-xs
