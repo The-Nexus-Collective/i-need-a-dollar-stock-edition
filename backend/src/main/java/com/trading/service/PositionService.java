@@ -765,6 +765,14 @@ public class PositionService {
                 .isolatedMargin(p.getIsolatedMargin())
                 .maintMarginRate(p.getMaintMarginRate())
                 .marginRisk(marginRisk)
+                // Pre-Mortem / Self-Learning fields
+                .preMortem(p.getPreMortem())
+                .bullCase(p.getBullCase())
+                .bearCase(p.getBearCase())
+                .expectedHoldHoursMin(p.getExpectedHoldHoursMin())
+                .expectedHoldHoursMax(p.getExpectedHoldHoursMax())
+                .targetPnlPercent(p.getTargetPnlPercent())
+                .maxAcceptableLossPercent(p.getMaxAcceptableLossPercent())
                 .build();
     }
 }

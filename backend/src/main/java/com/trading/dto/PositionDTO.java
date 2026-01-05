@@ -79,5 +79,27 @@ public class PositionDTO {
     
     @JsonProperty("margin_risk")
     private BigDecimal marginRisk;
+    
+    // Pre-Mortem / Self-Learning fields
+    @JsonProperty("pre_mortem")
+    private String preMortem;
+    
+    @JsonProperty("bull_case")
+    private String bullCase;
+    
+    @JsonProperty("bear_case")
+    private String bearCase;
+    
+    @JsonProperty("expected_hold_hours_min")
+    private Integer expectedHoldHoursMin;
+    
+    @JsonProperty("expected_hold_hours_max")
+    private Integer expectedHoldHoursMax;
+    
+    @JsonProperty("target_pnl_percent")
+    private BigDecimal targetPnlPercent;
+    
+    @JsonProperty("max_acceptable_loss_percent")
+    private BigDecimal maxAcceptableLossPercent;
 }
 

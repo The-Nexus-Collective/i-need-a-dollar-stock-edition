@@ -668,6 +668,25 @@ public class PortfolioManagerService {
                     holdTimeStr,
                     p.getLeverage(),
                     riskLevel));
+            
+            // Add YOUR TARGETS line if Pre-Mortem data is available
+            if (p.getTargetPnlPercent() != null && p.getMaxAcceptableLossPercent() != null) {
+                BigDecimal targetRoe = p.getTargetPnlPercent().multiply(BigDecimal.valueOf(p.getLeverage()));
+                BigDecimal progressPercent = p.getTargetPnlPercent().compareTo(BigDecimal.ZERO) != 0
+                        ? pnlPercent.divide(p.getTargetPnlPercent(), 1, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100))
+                        : BigDecimal.ZERO;
+                
+                String holdRange = (p.getExpectedHoldHoursMin() != null && p.getExpectedHoldHoursMax() != null)
+                        ? String.format("%d-%dh", p.getExpectedHoldHoursMin(), p.getExpectedHoldHoursMax())
+                        : "n/a";
+                
+                sb.append(String.format("  📊 YOUR TARGETS: Target +%s%% (ROE +%s%%) | Stop -%s%% | Hold %s | Progress: %s%%\n",
+                        p.getTargetPnlPercent().setScale(1, RoundingMode.HALF_UP),
+                        targetRoe.setScale(0, RoundingMode.HALF_UP),
+                        p.getMaxAcceptableLossPercent().setScale(1, RoundingMode.HALF_UP),
+                        holdRange,
+                        progressPercent.setScale(0, RoundingMode.HALF_UP)));
+            }
         }
 
         return sb.toString();
