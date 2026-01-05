@@ -162,6 +162,11 @@ interface LiveEquityData {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function formatCurrency(value: number, showSign = false): string {
+  // Handle NaN, undefined, or null values
+  if (value == null || isNaN(value)) {
+    return '$0.00'
+  }
+  
   const formatted = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -176,6 +181,11 @@ function formatCurrency(value: number, showSign = false): string {
 }
 
 function formatPercent(value: number, showSign = false): string {
+  // Handle NaN, undefined, or null values
+  if (value == null || isNaN(value)) {
+    return '0.00%'
+  }
+  
   const formatted = `${Math.abs(value).toFixed(2)}%`
   if (showSign && value !== 0) {
     return value >= 0 ? `+${formatted}` : `-${formatted}`
@@ -183,8 +193,14 @@ function formatPercent(value: number, showSign = false): string {
   return value < 0 ? `-${formatted}` : formatted
 }
 
-function formatTimeAgo(timestamp: string): string {
+function formatTimeAgo(timestamp: string | null | undefined): string {
+  if (!timestamp) return 'Unknown'
+  
   const date = new Date(timestamp)
+  
+  // Check for invalid date
+  if (isNaN(date.getTime())) return 'Unknown'
+  
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffMins = Math.floor(diffMs / 60000)
@@ -329,9 +345,9 @@ function PositionCard({
   const coin = position.symbol?.replace('USDT', '') || 'UNKNOWN'
   
   // Use live data if available, otherwise fall back to position data
-  const currentPrice = liveData?.current_price ?? position.current_price
-  const unrealizedPnl = liveData?.unrealized_pnl ?? position.unrealized_pnl
-  const unrealizedPnlPct = liveData?.unrealized_pnl_pct ?? position.unrealized_pnl_pct
+  const currentPrice = liveData?.current_price ?? position.current_price ?? 0
+  const unrealizedPnl = liveData?.unrealized_pnl ?? position.unrealized_pnl ?? 0
+  const unrealizedPnlPct = liveData?.unrealized_pnl_pct ?? position.unrealized_pnl_pct ?? 0
   const isProfitable = unrealizedPnl >= 0
   
   return (

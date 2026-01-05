@@ -366,6 +366,23 @@ public class PositionService {
             pnlPercent = p.calculatePnlPercent(currentPrice);
         }
         
+        // Calculate liquidation price
+        BigDecimal liquidationPrice = null;
+        if ("OPEN".equals(p.getStatus()) && p.getLeverage() != null && p.getLeverage() > 0) {
+            BigDecimal leverageFactor = BigDecimal.ONE.divide(
+                    BigDecimal.valueOf(p.getLeverage()), 8, RoundingMode.HALF_UP);
+            
+            if ("LONG".equalsIgnoreCase(p.getDirection())) {
+                // LONG: liquidation when price drops by margin percentage
+                liquidationPrice = p.getEntryPrice().multiply(BigDecimal.ONE.subtract(leverageFactor))
+                        .setScale(8, RoundingMode.HALF_UP);
+            } else {
+                // SHORT: liquidation when price rises by margin percentage
+                liquidationPrice = p.getEntryPrice().multiply(BigDecimal.ONE.add(leverageFactor))
+                        .setScale(8, RoundingMode.HALF_UP);
+            }
+        }
+        
         return PositionDTO.builder()
                 .id(p.getId())
                 .symbol(p.getSymbol())
@@ -386,6 +403,7 @@ public class PositionService {
                 .conviction(p.getConviction())
                 .reasoning(p.getReasoning())
                 .currentPrice(currentPrice)
+                .liquidationPrice(liquidationPrice)
                 .build();
     }
 }

@@ -89,6 +89,24 @@ public class EquityWebSocketHandler extends TextWebSocketHandler {
         sessions.remove(session);
     }
 
+    /**
+     * Send heartbeat to all connected clients every 20 seconds.
+     * This keeps connections alive and prevents load balancer idle timeouts.
+     * Note: This is in addition to the 1-second equity broadcasts as a fallback.
+     */
+    @Scheduled(fixedRate = 20000)
+    public void sendHeartbeat() {
+        if (sessions.isEmpty()) {
+            return;
+        }
+        
+        Map<String, Object> heartbeat = Map.of(
+            "type", "heartbeat",
+            "timestamp", Instant.now().toString()
+        );
+        broadcast(heartbeat);
+    }
+
     private com.trading.service.PositionService positionService;
     private com.trading.service.MarginMonitorService marginMonitorService;
 

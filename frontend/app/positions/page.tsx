@@ -42,6 +42,11 @@ interface Position {
 }
 
 function formatCurrency(value: number, showSign = false): string {
+  // Handle NaN, undefined, or null values
+  if (value == null || isNaN(value)) {
+    return '$0.00'
+  }
+  
   const formatted = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -55,6 +60,11 @@ function formatCurrency(value: number, showSign = false): string {
 }
 
 function formatPercentage(value: number, showSign = false): string {
+  // Handle NaN, undefined, or null values
+  if (value == null || isNaN(value)) {
+    return '0.00%'
+  }
+  
   const formatted = `${Math.abs(value).toFixed(2)}%`
   if (showSign && value !== 0) {
     return value >= 0 ? `+${formatted}` : `-${formatted}`
@@ -116,7 +126,9 @@ function PositionRow({ position }: { position: Position }) {
             )}
             <p className="text-xs text-text-muted mt-0.5">
               <Clock className="w-3 h-3 inline mr-1" />
-              {new Date(position.entry_time).toLocaleString()}
+              {position.entry_time && !isNaN(new Date(position.entry_time).getTime()) 
+                ? new Date(position.entry_time).toLocaleString() 
+                : 'Unknown'}
             </p>
           </div>
         </div>

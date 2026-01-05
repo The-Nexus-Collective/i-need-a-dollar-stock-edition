@@ -63,5 +63,8 @@ public class PositionDTO {
     
     @JsonProperty("current_price")
     private BigDecimal currentPrice;
+    
+    @JsonProperty("liquidation_price")
+    private BigDecimal liquidationPrice;
 }
 

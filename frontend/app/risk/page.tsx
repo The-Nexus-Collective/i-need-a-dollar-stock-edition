@@ -63,6 +63,11 @@ interface MarginHealth {
 }
 
 function formatCurrency(value: number, showSign = false): string {
+  // Handle NaN, undefined, or null values
+  if (value == null || isNaN(value)) {
+    return '$0.00'
+  }
+  
   const formatted = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -76,6 +81,11 @@ function formatCurrency(value: number, showSign = false): string {
 }
 
 function formatPercentage(value: number, showSign = false): string {
+  // Handle NaN, undefined, or null values
+  if (value == null || isNaN(value)) {
+    return '0.00%'
+  }
+  
   const formatted = `${Math.abs(value).toFixed(2)}%`
   if (showSign && value !== 0) {
     return value >= 0 ? `+${formatted}` : `-${formatted}`
@@ -151,8 +161,11 @@ function MarginPositionCard({ position }: { position: MarginPosition }) {
   const config = marginStatusConfig[position.status]
   const isLong = position.side === 'long'
   
+  // Handle NaN values
+  const distanceToLiq = isNaN(position.distance_to_liq_pct) ? 0 : position.distance_to_liq_pct
+  
   // Progress bar: 0% = at liquidation, 100% = very safe (>20% distance)
-  const progressPct = Math.min(100, Math.max(0, position.distance_to_liq_pct * 5))
+  const progressPct = Math.min(100, Math.max(0, distanceToLiq * 5))
   
   return (
     <motion.div
@@ -192,7 +205,7 @@ function MarginPositionCard({ position }: { position: MarginPosition }) {
         <div className="flex items-center justify-between text-xs mb-1">
           <span className="text-text-muted">Distance to Liquidation</span>
           <span className={clsx('font-mono font-bold', config.color)}>
-            {position.distance_to_liq_pct.toFixed(1)}%
+            {distanceToLiq.toFixed(1)}%
           </span>
         </div>
         <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
@@ -695,7 +708,20 @@ export default function RiskPage() {
         
         // Map positions to MarginPosition format
         const marginPositions: MarginPosition[] = positions.map(p => {
-          const distanceToLiq = Math.abs((p.current_price - p.liquidation_price) / p.current_price) * 100
+          // Handle missing or invalid values
+          const currentPrice = p.current_price || p.entry_price || 0
+          const liquidationPrice = p.liquidation_price || 0
+          
+          // Calculate distance to liquidation, handle edge cases
+          let distanceToLiq = 0
+          if (currentPrice > 0 && liquidationPrice > 0) {
+            distanceToLiq = Math.abs((currentPrice - liquidationPrice) / currentPrice) * 100
+          }
+          // Handle NaN
+          if (isNaN(distanceToLiq)) {
+            distanceToLiq = 100 // Default to safe if we can't calculate
+          }
+          
           const status: 'safe' | 'warning' | 'danger' = 
             distanceToLiq < 5 ? 'danger' :
             distanceToLiq < 15 ? 'warning' : 'safe'
@@ -703,13 +729,13 @@ export default function RiskPage() {
           return {
             coin: p.symbol?.replace('USDT', '') || 'UNKNOWN',
             side: (p.direction || 'LONG').toLowerCase(),
-            leverage: p.leverage,
-            entry_price: p.entry_price,
-            current_price: p.current_price,
-            liquidation_price: p.liquidation_price,
+            leverage: p.leverage || 1,
+            entry_price: p.entry_price || 0,
+            current_price: currentPrice,
+            liquidation_price: liquidationPrice,
             distance_to_liq_pct: distanceToLiq,
-            price_change_pct: p.unrealized_pnl_pct,
-            margin_used: p.size_usdt / p.leverage,
+            price_change_pct: p.unrealized_pnl_pct || 0,
+            margin_used: (p.size_usdt || 0) / (p.leverage || 1),
             status,
           }
         })

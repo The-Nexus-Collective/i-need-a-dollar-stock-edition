@@ -45,6 +45,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const pingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const reconnectCountRef = useRef(0)
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -60,6 +61,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
       wsRef.current.onopen = () => {
         console.log('[WS] Connected to', url)
+        reconnectCountRef.current = 0
         setState(prev => ({
           ...prev,
           isConnected: true,
@@ -68,12 +70,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
         }))
         onConnect?.()
 
-        // Start ping interval
+        // Start ping interval - 15 seconds for aggressive keepalive
         pingIntervalRef.current = setInterval(() => {
           if (wsRef.current?.readyState === WebSocket.OPEN) {
             wsRef.current.send('ping')
           }
-        }, 25000)
+        }, 15000)
       }
 
       wsRef.current.onmessage = (event) => {
@@ -99,12 +101,13 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
           clearInterval(pingIntervalRef.current)
         }
 
-        // Attempt reconnect
-        if (state.reconnectCount < maxReconnectAttempts) {
+        // Attempt reconnect using ref to avoid stale closure
+        if (reconnectCountRef.current < maxReconnectAttempts) {
+          reconnectCountRef.current += 1
           reconnectTimeoutRef.current = setTimeout(() => {
             setState(prev => ({
               ...prev,
-              reconnectCount: prev.reconnectCount + 1,
+              reconnectCount: reconnectCountRef.current,
             }))
             connect()
           }, reconnectInterval)
@@ -125,7 +128,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
         error: error as Error,
       }))
     }
-  }, [channel, onConnect, onDisconnect, onMessage, reconnectInterval, maxReconnectAttempts, state.reconnectCount])
+  }, [channel, onConnect, onDisconnect, onMessage, reconnectInterval, maxReconnectAttempts])
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {

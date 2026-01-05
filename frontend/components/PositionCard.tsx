@@ -40,10 +40,10 @@ export function PositionCard({ position }: PositionCardProps) {
   const [pnlFlash, setPnlFlash] = useState<'up' | 'down' | null>(null)
 
   const isLong = position.side === 'long'
-  const pnl = position.unrealizedPnl
+  const pnl = position.unrealizedPnl ?? 0
   const isProfitable = pnl >= 0
-  const positionValue = position.quantity * position.entryPrice
-  const pnlPercent = positionValue > 0 ? (pnl / positionValue) * 100 : 0
+  const positionValue = (position.quantity ?? 0) * (position.entryPrice ?? 0)
+  const pnlPercent = positionValue > 0 && !isNaN(pnl) ? (pnl / positionValue) * 100 : 0
 
   // Calculate progress to SL/TP
   const priceRange = position.takeProfit - position.stopLoss
@@ -61,10 +61,11 @@ export function PositionCard({ position }: PositionCardProps) {
   }, [pnl, prevPnl])
 
   // Time since opened
-  const openedDate = new Date(position.openedAt)
+  const openedDate = position.openedAt ? new Date(position.openedAt) : null
+  const isValidDate = openedDate && !isNaN(openedDate.getTime())
   const now = new Date()
-  const hoursOpen = Math.floor((now.getTime() - openedDate.getTime()) / (1000 * 60 * 60))
-  const minutesOpen = Math.floor(((now.getTime() - openedDate.getTime()) / (1000 * 60)) % 60)
+  const hoursOpen = isValidDate ? Math.floor((now.getTime() - openedDate.getTime()) / (1000 * 60 * 60)) : 0
+  const minutesOpen = isValidDate ? Math.floor(((now.getTime() - openedDate.getTime()) / (1000 * 60)) % 60) : 0
 
   return (
     <motion.div
@@ -108,7 +109,7 @@ export function PositionCard({ position }: PositionCardProps) {
               </div>
               <div className="flex items-center gap-2 text-xs text-text-muted">
                 <Clock className="w-3 h-3" />
-                <span>{hoursOpen}h {minutesOpen}m</span>
+                <span>{isValidDate ? `${hoursOpen}h ${minutesOpen}m` : 'Unknown'}</span>
               </div>
             </div>
           </div>
@@ -281,7 +282,7 @@ export function PositionCard({ position }: PositionCardProps) {
               <div className="bg-void/30 rounded-lg p-3">
                 <span className="text-label block mb-1">Opened At</span>
                 <span className="text-xs font-mono text-text-secondary">
-                  {openedDate.toLocaleString()}
+                  {isValidDate ? openedDate.toLocaleString() : 'Unknown'}
                 </span>
               </div>
             </div>

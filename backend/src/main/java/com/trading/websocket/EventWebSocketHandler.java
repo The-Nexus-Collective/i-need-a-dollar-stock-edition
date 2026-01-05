@@ -3,6 +3,7 @@ package com.trading.websocket;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -65,6 +66,23 @@ public class EventWebSocketHandler extends TextWebSocketHandler {
     public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
         log.warn("WebSocket transport error: {}", exception.getMessage());
         channelSessions.values().forEach(sessions -> sessions.remove(session));
+    }
+
+    /**
+     * Send heartbeat to all connected clients every 20 seconds.
+     * This keeps connections alive and prevents load balancer idle timeouts.
+     */
+    @Scheduled(fixedRate = 20000)
+    public void sendHeartbeat() {
+        if (channelSessions.isEmpty()) {
+            return;
+        }
+        
+        Map<String, Object> heartbeat = Map.of(
+            "type", "heartbeat",
+            "timestamp", Instant.now().toString()
+        );
+        channelSessions.values().forEach(sessions -> broadcast(sessions, heartbeat));
     }
 
     /**
