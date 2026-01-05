@@ -212,6 +212,7 @@ public class GrokService {
             2. Use your real-time search functions (x_keyword_search, web_search) for current data
             3. Skip coins where data is too thin or noisy - DO NOT FORCE A RATING
             4. Only coins with significant current discussion volume should be rated
+            5. NEVER trade Stablecoins (USDT, USDC, BUSD, DAI, TUSD, FDUSD, USDP, FRAX, GUSD, LUSD, USDD, sUSD) - they are pegged to fiat and unsuitable for trading
             
             ═══════════════════════════════════════════════════════════════════
             TASK 2: PORTFOLIO EVALUATION WITH RISK MANAGEMENT
@@ -338,6 +339,7 @@ public class GrokService {
             Search for new trading opportunities:
             - Only coins with clear sentiment signal (bullish → LONG, bearish → SHORT)
             - Conviction must be > 60
+            - NEVER suggest Stablecoins (USDT, USDC, BUSD, DAI, TUSD, FDUSD, etc.) - they are not tradeable
             
             ═══════════════════════════════════════════════════════════════════
             PRE-MORTEM REQUIREMENT (CRITICAL FOR SELF-LEARNING!)
