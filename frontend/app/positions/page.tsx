@@ -36,7 +36,7 @@ interface Position {
   conviction: number
   reasoning: string | null
   unrealized_pnl: number
-  unrealized_pnl_pct: number
+  pnl_percent: number  // Backend sends pnl_percent
   liquidation_price: number
   margin_risk_pct: number
 }
@@ -83,7 +83,7 @@ function PositionRow({ position }: { position: Position }) {
   
   // Use unrealized PnL directly from PM
   const isProfitable = (position.unrealized_pnl || 0) >= 0
-  const pnlPercent = position.unrealized_pnl_pct || 0
+  const pnlPercent = position.pnl_percent || 0
 
   // Get coin symbol (remove USDT suffix if present)
   const coin = position.symbol?.replace('USDT', '') || 'UNKNOWN'
@@ -264,14 +264,14 @@ export default function PositionsPage() {
           stop_loss_price: null, // PM doesn't use fixed SL
           take_profit_price: null, // PM doesn't use fixed TP
           status: 'open',
-          entry_time: p.opened_at,
+          entry_time: p.entry_time,  // Backend sends entry_time
           exit_time: null,
           exit_price: null,
           realized_pnl: 0,
           conviction: p.conviction,
-          reasoning: p.reason,
+          reasoning: p.reasoning,    // Backend sends reasoning
           unrealized_pnl: p.unrealized_pnl,
-          unrealized_pnl_pct: p.unrealized_pnl_pct,
+          pnl_percent: p.pnl_percent,  // Backend sends pnl_percent
           liquidation_price: p.liquidation_price,
           margin_risk_pct: p.margin_risk_pct,
         }))

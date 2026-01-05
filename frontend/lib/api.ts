@@ -813,11 +813,11 @@ class ApiClient {
           leverage: number
           conviction: number
           unrealized_pnl: number
-          unrealized_pnl_pct: number
+          pnl_percent: number         // Backend sends pnl_percent
           liquidation_price: number
           margin_risk_pct: number
-          opened_at: string
-          reason: string
+          entry_time: string          // Backend sends entry_time
+          reasoning: string | null    // Backend sends reasoning
         }>
         statistics: {
           starting_capital: number

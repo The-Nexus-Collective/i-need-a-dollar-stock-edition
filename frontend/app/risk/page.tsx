@@ -734,7 +734,7 @@ export default function RiskPage() {
             current_price: currentPrice,
             liquidation_price: liquidationPrice,
             distance_to_liq_pct: distanceToLiq,
-            price_change_pct: p.unrealized_pnl_pct || 0,
+            price_change_pct: p.pnl_percent || 0,
             margin_used: (p.size_usdt || 0) / (p.leverage || 1),
             status,
           }

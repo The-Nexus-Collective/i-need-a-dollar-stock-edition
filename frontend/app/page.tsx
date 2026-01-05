@@ -53,11 +53,12 @@ interface PortfolioPosition {
   leverage: number
   conviction: number
   unrealized_pnl: number
-  unrealized_pnl_pct: number
+  pnl_percent: number  // Backend sends pnl_percent, not unrealized_pnl_pct
   liquidation_price: number
   margin_risk_pct: number
-  opened_at: string
+  entry_time: string   // Backend sends entry_time, not opened_at
   reason: string
+  reasoning?: string   // Backend may send reasoning instead of reason
 }
 
 interface PortfolioStatistics {
@@ -142,7 +143,7 @@ interface LivePositionData {
   direction: string
   size_usdt: number
   unrealized_pnl: number
-  unrealized_pnl_pct: number
+  pnl_percent: number  // Backend sends pnl_percent
   entry_price: number
   current_price: number
   leverage: number
@@ -347,7 +348,7 @@ function PositionCard({
   // Use live data if available, otherwise fall back to position data
   const currentPrice = liveData?.current_price ?? position.current_price ?? 0
   const unrealizedPnl = liveData?.unrealized_pnl ?? position.unrealized_pnl ?? 0
-  const unrealizedPnlPct = liveData?.unrealized_pnl_pct ?? position.unrealized_pnl_pct ?? 0
+  const unrealizedPnlPct = liveData?.pnl_percent ?? position.pnl_percent ?? 0
   const isProfitable = unrealizedPnl >= 0
   
   return (
@@ -387,7 +388,7 @@ function PositionCard({
             </div>
             <span className="text-xs text-text-muted flex items-center gap-1">
               <Clock className="w-3 h-3" />
-              {formatTimeAgo(position.opened_at)}
+              {formatTimeAgo(position.entry_time)}
             </span>
           </div>
         </div>
@@ -485,7 +486,7 @@ function PositionCard({
           <span className="text-xs font-bold text-accent-cyan">{position.conviction}%</span>
         </div>
         <p className="text-xs text-text-secondary italic line-clamp-2">
-          "{position.reason}"
+          "{position.reasoning || position.reason || ''}"
         </p>
       </div>
     </motion.div>
