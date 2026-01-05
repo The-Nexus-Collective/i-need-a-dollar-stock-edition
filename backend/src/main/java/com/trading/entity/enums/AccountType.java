@@ -36,14 +36,20 @@ public enum AccountType {
      * Trading costs (fees, spread, slippage).
      * Expense account: Debit to increase (reduces equity).
      */
-    TRADING_COSTS;
+    TRADING_COSTS,
+    
+    /**
+     * Margin used/reserved for open positions (isolated margin).
+     * Asset account: Debit to reserve, Credit to release.
+     */
+    MARGIN_USED;
     
     /**
      * Check if this is an asset account.
      * Asset accounts: balance = debits - credits
      */
     public boolean isAsset() {
-        return this == CASH || this == POSITIONS;
+        return this == CASH || this == POSITIONS || this == MARGIN_USED;
     }
     
     /**

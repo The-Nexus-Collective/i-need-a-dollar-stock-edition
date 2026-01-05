@@ -17,6 +17,7 @@ import {
   Zap,
   AlertTriangle,
   BookOpen,
+  Brain,
   X,
 } from 'lucide-react'
 import { clsx } from 'clsx'
@@ -31,6 +32,7 @@ interface SidebarProps {
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/' },
   { icon: TrendingUp, label: 'Positions', href: '/positions' },
+  { icon: Brain, label: 'Learning', href: '/learning' },
   { icon: BookOpen, label: 'Logbook', href: '/logbook' },
   { icon: History, label: 'History', href: '/history' },
   { icon: Shield, label: 'Risk', href: '/risk' },

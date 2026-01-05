@@ -1,19 +1,25 @@
 package com.trading.service;
 
 import com.trading.dto.ClosedPositionInfo;
+import com.trading.dto.ExtendedPositionInfo;
 import com.trading.dto.OpenedPositionInfo;
 import com.trading.dto.PositionDTO;
+import com.trading.dto.ReducedPositionInfo;
+import com.trading.entity.MidTradeReflection;
 import com.trading.entity.Position;
 import com.trading.entity.TraderState;
+import com.trading.repository.MidTradeReflectionRepository;
 import com.trading.integration.binance.BinanceClient;
 import com.trading.integration.grok.GrokService;
 import com.trading.integration.grok.dto.AnalysisResult;
 import com.trading.integration.grok.dto.NewOpportunity;
 import com.trading.integration.grok.dto.PositionDecision;
+import com.trading.repository.PositionRepository;
 import com.trading.repository.TraderStateRepository;
 import com.trading.websocket.EquityWebSocketHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -54,6 +60,17 @@ public class PortfolioManagerService {
     private final AuditService auditService;
     private final AccountingService accountingService;
     private final LogbookService logbookService;
+    private final PositionRepository positionRepository;
+    private final FeeService feeService;
+    
+    @Autowired(required = false)
+    private SelfReflectionService selfReflectionService;
+    
+    @Autowired(required = false)
+    private OpenPositionEvaluator openPositionEvaluator;
+    
+    @Autowired(required = false)
+    private MidTradeReflectionRepository midTradeReflectionRepository;
 
     @Value("${trading.position.size-percent:0.02}")
     private BigDecimal positionSizePercent;
@@ -107,13 +124,43 @@ public class PortfolioManagerService {
             resultBuilder.openPositionsBefore(openPositions.size())
                     .availableCapital(state.getCurrentCapital());
 
+            // 1b. Evaluate open positions against Pre-Mortem predictions
+            String healthContext = "";
+            if (openPositionEvaluator != null && !openPositions.isEmpty()) {
+                List<OpenPositionEvaluator.PositionHealthCheck> healthChecks = 
+                        openPositionEvaluator.evaluateOpenPositions();
+                
+                if (!healthChecks.isEmpty()) {
+                    // Store mid-trade reflections
+                    storeMidTradeReflections(healthChecks, currentCycle);
+                    
+                    // Build health context for Grok
+                    healthContext = openPositionEvaluator.buildHealthContext(healthChecks);
+                    
+                    // Log summary
+                    long dangerCount = healthChecks.stream()
+                            .filter(h -> h.getHealthStatus() == OpenPositionEvaluator.PositionHealthCheck.HealthStatus.DANGER)
+                            .count();
+                    long warningCount = healthChecks.stream()
+                            .filter(h -> h.getHealthStatus() == OpenPositionEvaluator.PositionHealthCheck.HealthStatus.WARNING)
+                            .count();
+                    
+                    if (dangerCount > 0 || warningCount > 0) {
+                        log.warn("Pre-Mortem Health Check: {} DANGER, {} WARNING, {} HEALTHY",
+                                dangerCount, warningCount, healthChecks.size() - dangerCount - warningCount);
+                    } else {
+                        log.info("Pre-Mortem Health Check: All {} positions within expectations", healthChecks.size());
+                    }
+                }
+            }
+
             // 2. Build context for Grok
             String positionsContext = buildPositionsContext(openPositions);
             String deploymentInfo = buildDeploymentInfo(state, openPositions);
 
-            // 3. Get AI analysis
+            // 3. Get AI analysis (including Pre-Mortem health context)
             AnalysisResult analysis = grokService.analyze(
-                    positionsContext,
+                    positionsContext + healthContext,
                     availableSlots,
                     deploymentInfo,
                     state.getCurrentCapital()
@@ -139,8 +186,8 @@ public class PortfolioManagerService {
             List<ClosedPositionInfo> closedPositions = new ArrayList<>();
             List<OpenedPositionInfo> openedPositions = new ArrayList<>();
             List<String> keptPositions = new ArrayList<>();
-            List<String> extendedPositions = new ArrayList<>();
-            List<String> reducedPositions = new ArrayList<>();
+            List<ExtendedPositionInfo> extendedPositions = new ArrayList<>();
+            List<ReducedPositionInfo> reducedPositions = new ArrayList<>();
 
             // 4a. Process position decisions (CLOSE, EXTEND, REDUCE)
             processPositionDecisions(analysis, state, closedPositions, keptPositions, extendedPositions, reducedPositions);
@@ -215,8 +262,8 @@ public class PortfolioManagerService {
     private void processPositionDecisions(AnalysisResult analysis, TraderState state,
                                           List<ClosedPositionInfo> closedPositions,
                                           List<String> keptPositions,
-                                          List<String> extendedPositions,
-                                          List<String> reducedPositions) {
+                                          List<ExtendedPositionInfo> extendedPositions,
+                                          List<ReducedPositionInfo> reducedPositions) {
 
         for (PositionDecision decision : analysis.getPositionDecisions()) {
             log.info("Position decision: {} {} (sentiment: {})",
@@ -230,13 +277,22 @@ public class PortfolioManagerService {
                     }
                 }
                 case EXTEND -> {
-                    if (extendPosition(decision.getSymbol(), decision.getScalePercent(), decision.getReason(), state)) {
-                        extendedPositions.add(decision.getSymbol());
+                    ExtendedPositionInfo info = extendPosition(decision.getSymbol(), decision.getScalePercent(), decision.getReason(), state);
+                    if (info != null) {
+                        extendedPositions.add(info);
                     }
                 }
                 case REDUCE -> {
-                    if (reducePosition(decision.getSymbol(), decision.getScalePercent(), decision.getReason(), state)) {
-                        reducedPositions.add(decision.getSymbol());
+                    ReducedPositionInfo info = reducePosition(decision.getSymbol(), decision.getScalePercent(), decision.getReason(), state);
+                    if (info != null) {
+                        reducedPositions.add(info);
+                    }
+                }
+                case INCREASE_LEVERAGE, DECREASE_LEVERAGE -> {
+                    if (changeLeverage(decision.getSymbol(), decision.getTargetLeverage(), decision.getReason())) {
+                        // Leverage change is logged but doesn't need separate list tracking
+                        log.info("Leverage changed for {}: now {}x", 
+                                decision.getSymbol(), decision.getTargetLeverage());
                     }
                 }
                 case KEEP -> {
@@ -293,10 +349,11 @@ public class PortfolioManagerService {
                 return null;
             }
 
-            // Calculate exit fee
-            BigDecimal exitFee = position.getSizeUsdt()
-                    .multiply(new BigDecimal("0.001")) // 0.1% fee
-                    .setScale(8, RoundingMode.HALF_UP);
+            // Calculate exit fee using FeeService (respects VIP tier)
+            BigDecimal exitFee = feeService.calculateTakerFee(position.getSizeUsdt());
+
+            // Get Position entity for reflection (before closing)
+            Position positionEntity = positionRepository.findById(position.getId()).orElse(null);
 
             // Close the position (accounting is handled in PositionService)
             positionService.closePosition(position.getId(), currentPrice, reason, exitFee);
@@ -309,6 +366,18 @@ public class PortfolioManagerService {
 
             log.info("Closed {} @ {} - PnL: {} - Reason: {}",
                     symbol, currentPrice, pnl, reason);
+            
+            // Trigger self-reflection for learning (async-like, non-blocking)
+            if (selfReflectionService != null && positionEntity != null) {
+                try {
+                    // Update exit time on entity for reflection
+                    positionEntity.setExitTime(Instant.now());
+                    selfReflectionService.reflectOnTrade(positionEntity, currentPrice, 
+                            "Exit reason: " + reason + ". PnL: " + pnlPercent + "%");
+                } catch (Exception e) {
+                    log.warn("Self-reflection failed for {}: {}", symbol, e.getMessage());
+                }
+            }
             
             return ClosedPositionInfo.builder()
                     .symbol(symbol)
@@ -326,18 +395,12 @@ public class PortfolioManagerService {
         }
     }
 
-    private boolean extendPosition(String symbol, int scalePercent, String reason, TraderState state) {
+    private ExtendedPositionInfo extendPosition(String symbol, int scalePercent, String reason, TraderState state) {
         try {
             PositionDTO position = positionService.getPositionBySymbol(symbol);
             if (position == null) {
                 log.warn("Cannot extend {} - position not found", symbol);
-                return false;
-            }
-
-            BigDecimal currentPrice = binanceClient.getPrice(symbol);
-            if (currentPrice.compareTo(BigDecimal.ZERO) == 0) {
-                log.warn("Cannot extend {} - failed to get price", symbol);
-                return false;
+                return null;
             }
 
             // Calculate extension size
@@ -348,54 +411,103 @@ public class PortfolioManagerService {
             // Check if we have enough capital
             BigDecimal availableCash = accountingService.getCashBalance();
             if (extensionSize.compareTo(availableCash) > 0) {
-                log.warn("Cannot extend {} - insufficient capital", symbol);
-                return false;
+                log.warn("Cannot extend {} - insufficient capital (need {}, have {})", 
+                        symbol, extensionSize, availableCash);
+                return null;
             }
 
-            // TODO: Implement actual position extension in PositionService
-            log.info("Extending {} by {}% ({} USDT) @ {} - Reason: {}",
-                    symbol, scalePercent, extensionSize, currentPrice, reason);
+            // Execute the extension via PositionService
+            PositionService.ExtendResult result = positionService.extendPosition(
+                    position.getId(), extensionSize, reason);
 
-            return true;
+            if (!result.isSuccess()) {
+                log.warn("Failed to extend {}: {}", symbol, result.getError());
+                return null;
+            }
+
+            log.info("Extended {} by {}% ({} USDT) @ {} - Reason: {}",
+                    symbol, scalePercent, extensionSize, result.getPrice(), reason);
+
+            return ExtendedPositionInfo.builder()
+                    .symbol(symbol)
+                    .scalePercent(scalePercent)
+                    .addedSize(result.getAddedSize())
+                    .price(result.getPrice())
+                    .reason(reason)
+                    .build();
 
         } catch (Exception e) {
             log.error("Failed to extend position {}: {}", symbol, e.getMessage());
-            return false;
+            return null;
         }
     }
 
-    private boolean reducePosition(String symbol, int scalePercent, String reason, TraderState state) {
+    private ReducedPositionInfo reducePosition(String symbol, int scalePercent, String reason, TraderState state) {
         try {
             PositionDTO position = positionService.getPositionBySymbol(symbol);
             if (position == null) {
                 log.warn("Cannot reduce {} - position not found", symbol);
+                return null;
+            }
+
+            // Execute the reduction via PositionService
+            PositionService.ReduceResult result = positionService.reducePosition(
+                    position.getId(), scalePercent, reason);
+
+            if (!result.isSuccess()) {
+                log.warn("Failed to reduce {}: {}", symbol, result.getError());
+                return null;
+            }
+
+            log.info("Reduced {} by {}% ({} USDT) @ {} - PnL: {} - Reason: {}",
+                    symbol, scalePercent, result.getReducedSize(), result.getPrice(), 
+                    result.getPartialPnl(), reason);
+
+            return ReducedPositionInfo.builder()
+                    .symbol(symbol)
+                    .scalePercent(scalePercent)
+                    .reducedSize(result.getReducedSize())
+                    .price(result.getPrice())
+                    .partialPnl(result.getPartialPnl())
+                    .reason(reason)
+                    .build();
+
+        } catch (Exception e) {
+            log.error("Failed to reduce position {}: {}", symbol, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Change leverage on a position.
+     * Delegates to PositionService.changeLeverage() which handles:
+     * - Margin validation and reallocation
+     * - Liquidation price recalculation
+     * - Accounting ledger entries
+     */
+    private boolean changeLeverage(String symbol, int targetLeverage, String reason) {
+        try {
+            PositionDTO position = positionService.getPositionBySymbol(symbol);
+            if (position == null) {
+                log.warn("Cannot change leverage for {} - position not found", symbol);
                 return false;
             }
 
-            BigDecimal currentPrice = binanceClient.getPrice(symbol);
-            if (currentPrice.compareTo(BigDecimal.ZERO) == 0) {
-                log.warn("Cannot reduce {} - failed to get price", symbol);
-                return false;
+            if (position.getLeverage() == targetLeverage) {
+                log.info("Leverage already at {}x for {}", targetLeverage, symbol);
+                return true;
             }
 
-            // Calculate reduction size
-            BigDecimal reductionSize = position.getSizeUsdt()
-                    .multiply(BigDecimal.valueOf(scalePercent))
-                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-
-            // Calculate partial PnL
-            BigDecimal partialPnL = calculatePnL(position, currentPrice)
-                    .multiply(BigDecimal.valueOf(scalePercent))
-                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-
-            // TODO: Implement actual position reduction in PositionService
-            log.info("Reducing {} by {}% ({} USDT) @ {} - PnL: {} - Reason: {}",
-                    symbol, scalePercent, reductionSize, currentPrice, partialPnL, reason);
+            // Delegate to PositionService which handles margin management
+            positionService.changeLeverage(position.getId(), targetLeverage, reason);
+            
+            log.info("Changed leverage for {} from {}x to {}x - Reason: {}",
+                    symbol, position.getLeverage(), targetLeverage, reason);
 
             return true;
 
         } catch (Exception e) {
-            log.error("Failed to reduce position {}: {}", symbol, e.getMessage());
+            log.error("Failed to change leverage for {}: {}", symbol, e.getMessage());
             return false;
         }
     }
@@ -454,7 +566,7 @@ public class PortfolioManagerService {
             );
 
             if (result.isSuccess()) {
-                // Create position in DB
+                // Create position in DB with Pre-Mortem data
                 Position position = positionService.createPosition(
                         symbol,
                         direction,
@@ -463,7 +575,14 @@ public class PortfolioManagerService {
                         sizeUsdt,
                         opportunity.getLeverage(),
                         opportunity.getConviction(),
-                        opportunity.getReason()
+                        opportunity.getReason(),
+                        opportunity.getPreMortem(),
+                        opportunity.getBullCase(),
+                        opportunity.getBearCase(),
+                        opportunity.getExpectedHoldHoursMin(),
+                        opportunity.getExpectedHoldHoursMax(),
+                        opportunity.getTargetPnlPercent(),
+                        opportunity.getMaxAcceptableLossPercent()
                 );
 
                 // Record in accounting ledger (double-entry bookkeeping)
@@ -608,6 +727,45 @@ public class PortfolioManagerService {
                 state.getCurrentCapital(),
                 maxPositions - positions.size(),
                 maxPositions);
+    }
+
+    /**
+     * Store mid-trade reflections for learning analysis.
+     */
+    private void storeMidTradeReflections(List<OpenPositionEvaluator.PositionHealthCheck> healthChecks, int cycleNum) {
+        if (midTradeReflectionRepository == null) {
+            return;
+        }
+        
+        for (OpenPositionEvaluator.PositionHealthCheck check : healthChecks) {
+            MidTradeReflection reflection = MidTradeReflection.builder()
+                    .id(java.util.UUID.randomUUID().toString())
+                    .positionId(check.getPositionId())
+                    .symbol(check.getSymbol())
+                    .direction(check.getDirection())
+                    .evaluatedAt(Instant.now())
+                    .currentPrice(check.getCurrentPrice())
+                    .currentPnlPercent(check.getCurrentPnlPercent())
+                    .currentHoldHours(check.getCurrentHoldHours())
+                    .targetPnlPercent(check.getTargetPnlPercent())
+                    .maxAcceptableLoss(check.getMaxAcceptableLoss())
+                    .expectedHoldHoursMax(check.getExpectedHoldHoursMax())
+                    .withinPnlExpectations(check.isWithinPnlExpectations())
+                    .withinTimeExpectations(check.isWithinTimeExpectations())
+                    .approachingMaxLoss(check.isApproachingMaxLoss())
+                    .exceedingTarget(check.isExceedingTargetPnl())
+                    .healthStatus(MidTradeReflection.HealthStatus.valueOf(check.getHealthStatus().name()))
+                    .recommendation(check.getRecommendation())
+                    .healthReason(check.getHealthReason())
+                    .preMortem(check.getPreMortem())
+                    .bearCase(check.getBearCase())
+                    .cycleNumber(cycleNum)
+                    .build();
+            
+            midTradeReflectionRepository.save(reflection);
+        }
+        
+        log.debug("Stored {} mid-trade reflections for cycle #{}", healthChecks.size(), cycleNum);
     }
 
     private void broadcastPhase(String phase, long nextCycleAt, int cycleNumber) {

@@ -3,8 +3,10 @@ package com.trading.controller;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.trading.dto.ClosedPositionInfo;
+import com.trading.dto.ExtendedPositionInfo;
 import com.trading.dto.LogbookEntryDTO;
 import com.trading.dto.OpenedPositionInfo;
+import com.trading.dto.ReducedPositionInfo;
 import com.trading.entity.LogbookEntry;
 import com.trading.service.LogbookService;
 import lombok.RequiredArgsConstructor;
@@ -64,6 +66,8 @@ public class LogbookController {
         List<LogbookEntryDTO.PositionAction> opened = parsePositionsOpened(entry.getPositionsOpened());
         List<LogbookEntryDTO.PositionAction> closed = parsePositionsClosed(entry.getPositionsClosed());
         List<String> kept = parseStringList(entry.getPositionsKept());
+        List<LogbookEntryDTO.ScaledPositionAction> extended = parsePositionsExtended(entry.getPositionsExtended());
+        List<LogbookEntryDTO.ScaledPositionAction> reduced = parsePositionsReduced(entry.getPositionsReduced());
         
         return LogbookEntryDTO.builder()
                 .id(entry.getId())
@@ -74,8 +78,8 @@ public class LogbookController {
                 .positionsClosed(closed)
                 .positionsOpened(opened)
                 .positionsKept(kept)
-                .positionsExtended(parseStringList(entry.getPositionsExtended()))
-                .positionsReduced(parseStringList(entry.getPositionsReduced()))
+                .positionsExtended(extended)
+                .positionsReduced(reduced)
                 .coinsAnalyzed(entry.getCoinsAnalyzed())
                 .coinsSkipped(entry.getCoinsSkipped())
                 .tokensUsed(entry.getTokensUsed())
@@ -137,6 +141,47 @@ public class LogbookController {
                     .collect(Collectors.toList());
         } catch (Exception e) {
             log.debug("Failed to parse positions closed: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+    
+    @SuppressWarnings("unchecked")
+    private List<LogbookEntryDTO.ScaledPositionAction> parsePositionsExtended(String json) {
+        if (json == null || json.isEmpty()) return Collections.emptyList();
+        try {
+            List<ExtendedPositionInfo> infos = objectMapper.readValue(json, new TypeReference<List<ExtendedPositionInfo>>() {});
+            return infos.stream()
+                    .map(info -> LogbookEntryDTO.ScaledPositionAction.builder()
+                            .symbol(info.getSymbol())
+                            .scalePercent(info.getScalePercent())
+                            .price(info.getPrice())
+                            .size(info.getAddedSize())
+                            .reason(info.getReason())
+                            .build())
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.debug("Failed to parse positions extended: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+    
+    @SuppressWarnings("unchecked")
+    private List<LogbookEntryDTO.ScaledPositionAction> parsePositionsReduced(String json) {
+        if (json == null || json.isEmpty()) return Collections.emptyList();
+        try {
+            List<ReducedPositionInfo> infos = objectMapper.readValue(json, new TypeReference<List<ReducedPositionInfo>>() {});
+            return infos.stream()
+                    .map(info -> LogbookEntryDTO.ScaledPositionAction.builder()
+                            .symbol(info.getSymbol())
+                            .scalePercent(info.getScalePercent())
+                            .price(info.getPrice())
+                            .size(info.getReducedSize())
+                            .pnl(info.getPartialPnl())
+                            .reason(info.getReason())
+                            .build())
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.debug("Failed to parse positions reduced: {}", e.getMessage());
             return Collections.emptyList();
         }
     }

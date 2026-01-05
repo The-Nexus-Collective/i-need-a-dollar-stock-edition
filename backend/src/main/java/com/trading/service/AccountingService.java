@@ -252,6 +252,209 @@ public class AccountingService {
     }
     
     /**
+     * Record extending (adding to) an existing position.
+     * 
+     * Debits:
+     *   - POSITIONS: addedSize (asset increase)
+     *   - TRADING_COSTS: totalCosts (expense)
+     * 
+     * Credits:
+     *   - CASH: addedSize + totalCosts (asset decrease)
+     */
+    @Transactional
+    public UUID recordExtendPosition(String positionId, String symbol, BigDecimal addedSize,
+                                     BigDecimal fee, BigDecimal spread, BigDecimal slippage,
+                                     BigDecimal price, String direction) {
+        UUID txId = UUID.randomUUID();
+        Instant now = Instant.now();
+        BigDecimal totalCosts = fee.add(spread).add(slippage);
+        BigDecimal totalDeducted = addedSize.add(totalCosts);
+        
+        // Build metadata
+        Map<String, Object> metadata = Map.of(
+            "symbol", symbol,
+            "direction", direction,
+            "price", price,
+            "addedSize", addedSize,
+            "fee", fee,
+            "spread", spread,
+            "slippage", slippage,
+            "operation", "EXTEND"
+        );
+        String metadataJson = toJson(metadata);
+        
+        List<LedgerEntry> entries = new ArrayList<>();
+        
+        // 1. Debit POSITIONS (increase asset)
+        entries.add(LedgerEntry.builder()
+                .transactionId(txId)
+                .timestamp(now)
+                .transactionType(TransactionType.EXTEND)
+                .positionId(positionId)
+                .account(AccountType.POSITIONS)
+                .debit(addedSize)
+                .credit(BigDecimal.ZERO)
+                .description("Position extended: " + direction + " " + symbol + " +" + addedSize + " USDT")
+                .metadata(metadataJson)
+                .build());
+        
+        // 2. Debit TRADING_COSTS (expense)
+        if (totalCosts.compareTo(BigDecimal.ZERO) > 0) {
+            entries.add(LedgerEntry.builder()
+                    .transactionId(txId)
+                    .timestamp(now)
+                    .transactionType(TransactionType.FEE)
+                    .positionId(positionId)
+                    .account(AccountType.TRADING_COSTS)
+                    .debit(totalCosts)
+                    .credit(BigDecimal.ZERO)
+                    .description("Extension costs: fee=" + fee + ", spread=" + spread + ", slippage=" + slippage)
+                    .metadata(metadataJson)
+                    .build());
+        }
+        
+        // 3. Credit CASH (decrease asset)
+        entries.add(LedgerEntry.builder()
+                .transactionId(txId)
+                .timestamp(now)
+                .transactionType(TransactionType.EXTEND)
+                .positionId(positionId)
+                .account(AccountType.CASH)
+                .debit(BigDecimal.ZERO)
+                .credit(totalDeducted)
+                .description("Capital deployed for extending " + symbol)
+                .metadata(metadataJson)
+                .build());
+        
+        // Calculate running balances
+        calculateRunningBalances(entries);
+        
+        // Save all entries
+        ledgerRepository.saveAll(entries);
+        
+        log.info("Recorded EXTEND position {}: addedSize={}, costs={}, txId={}", 
+                positionId, addedSize, totalCosts, txId);
+        
+        return txId;
+    }
+    
+    /**
+     * Record reducing (partially closing) an existing position.
+     * 
+     * Credits:
+     *   - POSITIONS: reducedSize (asset decrease - remove portion at entry cost)
+     *   - REALIZED_PNL: partialPnl if profit (equity increase)
+     * 
+     * Debits:
+     *   - CASH: reducedSize + partialPnl - exitCosts (asset increase - return capital)
+     *   - REALIZED_PNL: |partialPnl| if loss (equity decrease)
+     *   - TRADING_COSTS: exitCosts (expense)
+     */
+    @Transactional
+    public UUID recordReducePosition(String positionId, String symbol, BigDecimal reducedSize,
+                                     BigDecimal partialPnl, BigDecimal exitFee,
+                                     BigDecimal exitPrice, int scalePercent) {
+        UUID txId = UUID.randomUUID();
+        Instant now = Instant.now();
+        BigDecimal cashReturned = reducedSize.add(partialPnl).subtract(exitFee);
+        
+        // Build metadata
+        Map<String, Object> metadata = Map.of(
+            "symbol", symbol,
+            "exitPrice", exitPrice,
+            "reducedSize", reducedSize,
+            "partialPnl", partialPnl,
+            "exitFee", exitFee,
+            "scalePercent", scalePercent,
+            "operation", "REDUCE"
+        );
+        String metadataJson = toJson(metadata);
+        
+        List<LedgerEntry> entries = new ArrayList<>();
+        
+        // 1. Credit POSITIONS (decrease asset - remove at entry cost)
+        entries.add(LedgerEntry.builder()
+                .transactionId(txId)
+                .timestamp(now)
+                .transactionType(TransactionType.REDUCE)
+                .positionId(positionId)
+                .account(AccountType.POSITIONS)
+                .debit(BigDecimal.ZERO)
+                .credit(reducedSize)
+                .description("Position reduced: " + symbol + " -" + scalePercent + "%")
+                .metadata(metadataJson)
+                .build());
+        
+        // 2. Record PnL
+        if (partialPnl.compareTo(BigDecimal.ZERO) >= 0) {
+            // Profit: Credit REALIZED_PNL (increase equity)
+            entries.add(LedgerEntry.builder()
+                    .transactionId(txId)
+                    .timestamp(now)
+                    .transactionType(TransactionType.REDUCE)
+                    .positionId(positionId)
+                    .account(AccountType.REALIZED_PNL)
+                    .debit(BigDecimal.ZERO)
+                    .credit(partialPnl)
+                    .description("Partial profit realized: " + symbol)
+                    .metadata(metadataJson)
+                    .build());
+        } else {
+            // Loss: Debit REALIZED_PNL (decrease equity)
+            entries.add(LedgerEntry.builder()
+                    .transactionId(txId)
+                    .timestamp(now)
+                    .transactionType(TransactionType.REDUCE)
+                    .positionId(positionId)
+                    .account(AccountType.REALIZED_PNL)
+                    .debit(partialPnl.abs())
+                    .credit(BigDecimal.ZERO)
+                    .description("Partial loss realized: " + symbol)
+                    .metadata(metadataJson)
+                    .build());
+        }
+        
+        // 3. Debit TRADING_COSTS (expense)
+        if (exitFee.compareTo(BigDecimal.ZERO) > 0) {
+            entries.add(LedgerEntry.builder()
+                    .transactionId(txId)
+                    .timestamp(now)
+                    .transactionType(TransactionType.FEE)
+                    .positionId(positionId)
+                    .account(AccountType.TRADING_COSTS)
+                    .debit(exitFee)
+                    .credit(BigDecimal.ZERO)
+                    .description("Reduction fee: " + symbol)
+                    .metadata(metadataJson)
+                    .build());
+        }
+        
+        // 4. Debit CASH (increase asset - return capital with PnL)
+        entries.add(LedgerEntry.builder()
+                .transactionId(txId)
+                .timestamp(now)
+                .transactionType(TransactionType.REDUCE)
+                .positionId(positionId)
+                .account(AccountType.CASH)
+                .debit(cashReturned)
+                .credit(BigDecimal.ZERO)
+                .description("Capital returned from reducing " + symbol)
+                .metadata(metadataJson)
+                .build());
+        
+        // Calculate running balances
+        calculateRunningBalances(entries);
+        
+        // Save all entries
+        ledgerRepository.saveAll(entries);
+        
+        log.info("Recorded REDUCE position {}: reducedSize={}, partialPnl={}, cashReturned={}, txId={}", 
+                positionId, reducedSize, partialPnl, cashReturned, txId);
+        
+        return txId;
+    }
+    
+    /**
      * Record a margin call (forced liquidation).
      * 
      * This is similar to closePosition but uses MARGIN_CALL transaction type
@@ -452,6 +655,317 @@ public class AccountingService {
         return getCashBalance().add(getPositionsValue());
     }
     
+    /**
+     * Get total margin currently used/reserved for positions.
+     */
+    public BigDecimal getMarginUsed() {
+        BigDecimal netBalance = ledgerRepository.calculateNetBalance(AccountType.MARGIN_USED);
+        return netBalance != null ? netBalance : BigDecimal.ZERO;
+    }
+    
+    /**
+     * Get available balance for new positions or margin increases.
+     * Available = Cash - Margin Used
+     */
+    public BigDecimal getAvailableBalance() {
+        return getCashBalance().subtract(getMarginUsed());
+    }
+    
+    // ========== MARGIN OPERATIONS ==========
+    
+    /**
+     * Reserve margin for a position (e.g., when opening or decreasing leverage).
+     * 
+     * Debits:
+     *   - MARGIN_USED: amount (increase reserved margin)
+     * Credits:
+     *   - CASH: amount (decrease available cash)
+     */
+    @Transactional
+    public UUID reserveMargin(String positionId, BigDecimal amount) {
+        UUID txId = UUID.randomUUID();
+        Instant now = Instant.now();
+        
+        Map<String, Object> metadata = Map.of(
+            "positionId", positionId,
+            "operation", "RESERVE",
+            "amount", amount
+        );
+        String metadataJson = toJson(metadata);
+        
+        List<LedgerEntry> entries = new ArrayList<>();
+        
+        // Debit MARGIN_USED (increase reserved margin)
+        entries.add(LedgerEntry.builder()
+                .transactionId(txId)
+                .timestamp(now)
+                .transactionType(TransactionType.LEVERAGE_CHANGE)
+                .positionId(positionId)
+                .account(AccountType.MARGIN_USED)
+                .debit(amount)
+                .credit(BigDecimal.ZERO)
+                .description("Margin reserved for position")
+                .metadata(metadataJson)
+                .build());
+        
+        // Credit CASH (decrease available cash)
+        entries.add(LedgerEntry.builder()
+                .transactionId(txId)
+                .timestamp(now)
+                .transactionType(TransactionType.LEVERAGE_CHANGE)
+                .positionId(positionId)
+                .account(AccountType.CASH)
+                .debit(BigDecimal.ZERO)
+                .credit(amount)
+                .description("Cash moved to margin reserve")
+                .metadata(metadataJson)
+                .build());
+        
+        calculateRunningBalances(entries);
+        ledgerRepository.saveAll(entries);
+        
+        log.info("Reserved margin {} for position {}, txId={}", amount, positionId, txId);
+        return txId;
+    }
+    
+    /**
+     * Release margin from a position (e.g., when closing or increasing leverage).
+     * 
+     * Debits:
+     *   - CASH: amount (increase available cash)
+     * Credits:
+     *   - MARGIN_USED: amount (decrease reserved margin)
+     */
+    @Transactional
+    public UUID releaseMargin(String positionId, BigDecimal amount) {
+        UUID txId = UUID.randomUUID();
+        Instant now = Instant.now();
+        
+        Map<String, Object> metadata = Map.of(
+            "positionId", positionId,
+            "operation", "RELEASE",
+            "amount", amount
+        );
+        String metadataJson = toJson(metadata);
+        
+        List<LedgerEntry> entries = new ArrayList<>();
+        
+        // Debit CASH (increase available cash)
+        entries.add(LedgerEntry.builder()
+                .transactionId(txId)
+                .timestamp(now)
+                .transactionType(TransactionType.LEVERAGE_CHANGE)
+                .positionId(positionId)
+                .account(AccountType.CASH)
+                .debit(amount)
+                .credit(BigDecimal.ZERO)
+                .description("Cash released from margin reserve")
+                .metadata(metadataJson)
+                .build());
+        
+        // Credit MARGIN_USED (decrease reserved margin)
+        entries.add(LedgerEntry.builder()
+                .transactionId(txId)
+                .timestamp(now)
+                .transactionType(TransactionType.LEVERAGE_CHANGE)
+                .positionId(positionId)
+                .account(AccountType.MARGIN_USED)
+                .debit(BigDecimal.ZERO)
+                .credit(amount)
+                .description("Margin released from position")
+                .metadata(metadataJson)
+                .build());
+        
+        calculateRunningBalances(entries);
+        ledgerRepository.saveAll(entries);
+        
+        log.info("Released margin {} from position {}, txId={}", amount, positionId, txId);
+        return txId;
+    }
+    
+    /**
+     * Record a leverage change transaction.
+     * This records the margin movement for audit purposes.
+     * No PnL is realized - only margin allocation changes.
+     */
+    @Transactional
+    public UUID recordLeverageChange(String positionId, String symbol,
+                                      int oldLeverage, int newLeverage,
+                                      BigDecimal oldMargin, BigDecimal newMargin,
+                                      BigDecimal oldLiqPrice, BigDecimal newLiqPrice,
+                                      String reason) {
+        UUID txId = UUID.randomUUID();
+        Instant now = Instant.now();
+        BigDecimal marginDiff = newMargin.subtract(oldMargin);
+        
+        Map<String, Object> metadata = Map.of(
+            "symbol", symbol,
+            "oldLeverage", oldLeverage,
+            "newLeverage", newLeverage,
+            "oldMargin", oldMargin,
+            "newMargin", newMargin,
+            "marginDiff", marginDiff,
+            "oldLiqPrice", oldLiqPrice,
+            "newLiqPrice", newLiqPrice,
+            "reason", reason != null ? reason : ""
+        );
+        String metadataJson = toJson(metadata);
+        
+        List<LedgerEntry> entries = new ArrayList<>();
+        
+        if (marginDiff.compareTo(BigDecimal.ZERO) > 0) {
+            // More margin needed (leverage decreased)
+            entries.add(LedgerEntry.builder()
+                    .transactionId(txId)
+                    .timestamp(now)
+                    .transactionType(TransactionType.LEVERAGE_CHANGE)
+                    .positionId(positionId)
+                    .account(AccountType.MARGIN_USED)
+                    .debit(marginDiff)
+                    .credit(BigDecimal.ZERO)
+                    .description("Leverage " + oldLeverage + "x → " + newLeverage + "x: Additional margin reserved")
+                    .metadata(metadataJson)
+                    .build());
+            
+            entries.add(LedgerEntry.builder()
+                    .transactionId(txId)
+                    .timestamp(now)
+                    .transactionType(TransactionType.LEVERAGE_CHANGE)
+                    .positionId(positionId)
+                    .account(AccountType.CASH)
+                    .debit(BigDecimal.ZERO)
+                    .credit(marginDiff)
+                    .description("Leverage " + oldLeverage + "x → " + newLeverage + "x: Cash to margin")
+                    .metadata(metadataJson)
+                    .build());
+        } else if (marginDiff.compareTo(BigDecimal.ZERO) < 0) {
+            // Less margin needed (leverage increased)
+            BigDecimal released = marginDiff.abs();
+            
+            entries.add(LedgerEntry.builder()
+                    .transactionId(txId)
+                    .timestamp(now)
+                    .transactionType(TransactionType.LEVERAGE_CHANGE)
+                    .positionId(positionId)
+                    .account(AccountType.CASH)
+                    .debit(released)
+                    .credit(BigDecimal.ZERO)
+                    .description("Leverage " + oldLeverage + "x → " + newLeverage + "x: Margin released to cash")
+                    .metadata(metadataJson)
+                    .build());
+            
+            entries.add(LedgerEntry.builder()
+                    .transactionId(txId)
+                    .timestamp(now)
+                    .transactionType(TransactionType.LEVERAGE_CHANGE)
+                    .positionId(positionId)
+                    .account(AccountType.MARGIN_USED)
+                    .debit(BigDecimal.ZERO)
+                    .credit(released)
+                    .description("Leverage " + oldLeverage + "x → " + newLeverage + "x: Margin released")
+                    .metadata(metadataJson)
+                    .build());
+        }
+        
+        if (!entries.isEmpty()) {
+            calculateRunningBalances(entries);
+            ledgerRepository.saveAll(entries);
+        }
+        
+        log.info("Recorded leverage change {}: {}x → {}x, margin {} → {}, txId={}", 
+                symbol, oldLeverage, newLeverage, oldMargin, newMargin, txId);
+        
+        return txId;
+    }
+    
+    /**
+     * Record a funding fee payment.
+     * 
+     * Positive fundingFee = payment (cost for longs when rate is positive)
+     * Negative fundingFee = receipt (income for shorts when rate is positive)
+     */
+    @Transactional
+    public UUID recordFundingPayment(String positionId, String symbol,
+                                      BigDecimal fundingFee, BigDecimal fundingRate) {
+        UUID txId = UUID.randomUUID();
+        Instant now = Instant.now();
+        
+        Map<String, Object> metadata = Map.of(
+            "symbol", symbol,
+            "fundingRate", fundingRate,
+            "fundingFee", fundingFee,
+            "isPayment", fundingFee.compareTo(BigDecimal.ZERO) > 0
+        );
+        String metadataJson = toJson(metadata);
+        
+        List<LedgerEntry> entries = new ArrayList<>();
+        
+        if (fundingFee.compareTo(BigDecimal.ZERO) > 0) {
+            // Payment (cost) - Debit TRADING_COSTS, Credit CASH
+            entries.add(LedgerEntry.builder()
+                    .transactionId(txId)
+                    .timestamp(now)
+                    .transactionType(TransactionType.FUNDING)
+                    .positionId(positionId)
+                    .account(AccountType.TRADING_COSTS)
+                    .debit(fundingFee)
+                    .credit(BigDecimal.ZERO)
+                    .description("Funding payment: " + symbol + " @ " + fundingRate)
+                    .metadata(metadataJson)
+                    .build());
+            
+            entries.add(LedgerEntry.builder()
+                    .transactionId(txId)
+                    .timestamp(now)
+                    .transactionType(TransactionType.FUNDING)
+                    .positionId(positionId)
+                    .account(AccountType.CASH)
+                    .debit(BigDecimal.ZERO)
+                    .credit(fundingFee)
+                    .description("Funding payment: " + symbol)
+                    .metadata(metadataJson)
+                    .build());
+        } else if (fundingFee.compareTo(BigDecimal.ZERO) < 0) {
+            // Receipt (income) - Debit CASH, Credit REALIZED_PNL
+            BigDecimal income = fundingFee.abs();
+            
+            entries.add(LedgerEntry.builder()
+                    .transactionId(txId)
+                    .timestamp(now)
+                    .transactionType(TransactionType.FUNDING)
+                    .positionId(positionId)
+                    .account(AccountType.CASH)
+                    .debit(income)
+                    .credit(BigDecimal.ZERO)
+                    .description("Funding income: " + symbol + " @ " + fundingRate)
+                    .metadata(metadataJson)
+                    .build());
+            
+            entries.add(LedgerEntry.builder()
+                    .transactionId(txId)
+                    .timestamp(now)
+                    .transactionType(TransactionType.FUNDING)
+                    .positionId(positionId)
+                    .account(AccountType.REALIZED_PNL)
+                    .debit(BigDecimal.ZERO)
+                    .credit(income)
+                    .description("Funding income: " + symbol)
+                    .metadata(metadataJson)
+                    .build());
+        }
+        
+        if (!entries.isEmpty()) {
+            calculateRunningBalances(entries);
+            ledgerRepository.saveAll(entries);
+            
+            log.debug("Recorded funding {}: {} @ rate {} = {} USDT, txId={}", 
+                    symbol, fundingFee.compareTo(BigDecimal.ZERO) > 0 ? "payment" : "income",
+                    fundingRate, fundingFee.abs(), txId);
+        }
+        
+        return txId;
+    }
+    
     // ========== RECONCILIATION ==========
     
     /**
@@ -522,6 +1036,62 @@ public class AccountingService {
      */
     public boolean isInitialized() {
         return ledgerRepository.count() > 0;
+    }
+    
+    /**
+     * Get total spread costs from all TRADING_COSTS entries.
+     * Spread is stored in metadata JSON of FEE transaction type entries.
+     */
+    public BigDecimal getTotalSpread() {
+        return aggregateCostFromMetadata("spread");
+    }
+    
+    /**
+     * Get total slippage costs from all TRADING_COSTS entries.
+     * Slippage is stored in metadata JSON of FEE transaction type entries.
+     */
+    public BigDecimal getTotalSlippage() {
+        return aggregateCostFromMetadata("slippage");
+    }
+    
+    /**
+     * Get total fees (without spread/slippage) from metadata.
+     */
+    public BigDecimal getTotalFees() {
+        return aggregateCostFromMetadata("fee");
+    }
+    
+    /**
+     * Aggregate a specific cost type from TRADING_COSTS entry metadata.
+     */
+    @SuppressWarnings("unchecked")
+    private BigDecimal aggregateCostFromMetadata(String costField) {
+        List<LedgerEntry> tradingCostEntries = ledgerRepository.findByAccountOrderByTimestampAsc(AccountType.TRADING_COSTS);
+        BigDecimal total = BigDecimal.ZERO;
+        
+        for (LedgerEntry entry : tradingCostEntries) {
+            if (entry.getMetadata() != null && !entry.getMetadata().isEmpty()) {
+                try {
+                    Map<String, Object> metadata = objectMapper.readValue(entry.getMetadata(), Map.class);
+                    Object value = metadata.get(costField);
+                    if (value != null) {
+                        BigDecimal cost;
+                        if (value instanceof Number) {
+                            cost = new BigDecimal(value.toString());
+                        } else if (value instanceof String) {
+                            cost = new BigDecimal((String) value);
+                        } else {
+                            continue;
+                        }
+                        total = total.add(cost);
+                    }
+                } catch (Exception e) {
+                    log.debug("Failed to parse metadata for cost aggregation: {}", e.getMessage());
+                }
+            }
+        }
+        
+        return total.setScale(8, RoundingMode.HALF_UP);
     }
     
     // ========== AUDIT ==========

@@ -38,3 +38,33 @@ databaseChangeLog:
             relativeToChangelogFile: true
             splitStatements: true
             stripComments: false
+
+  - changeSet:
+      id: 015-margin-system
+      author: trading-platform
+      changes:
+        - sqlFile:
+            path: 015-margin-system.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: false
+
+  - changeSet:
+      id: 020-self-learning
+      author: trading-platform
+      changes:
+        - sqlFile:
+            path: 020-self-learning.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: false
+
+  - changeSet:
+      id: 025-mid-trade-reflections
+      author: trading-platform
+      changes:
+        - sqlFile:
+            path: 025-mid-trade-reflections.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: false

@@ -1,5 +1,6 @@
 package com.trading.scheduler;
 
+import com.trading.service.FundingService;
 import com.trading.service.PortfolioManagerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,9 +10,9 @@ import org.springframework.stereotype.Service;
 /**
  * Trading cycle scheduler - handles timing only.
  * 
- * All business logic is delegated to PortfolioManagerService.
- * This keeps the scheduler focused on a single responsibility:
- * triggering cycles at the configured interval.
+ * Responsibilities:
+ * - Trading cycles: Triggered at configured interval
+ * - Funding payments: Triggered at 00:00, 08:00, 16:00 UTC (Binance schedule)
  */
 @Slf4j
 @Service
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
 public class TradingCycleScheduler {
 
     private final PortfolioManagerService portfolioManagerService;
+    private final FundingService fundingService;
 
     /**
      * Main trading cycle - runs every 10 minutes by default.
@@ -55,5 +57,33 @@ public class TradingCycleScheduler {
      */
     public int getCurrentCycleNumber() {
         return portfolioManagerService.getCurrentCycleNumber();
+    }
+
+    /**
+     * Process funding payments at Binance funding times.
+     * Runs at 00:00, 08:00, 16:00 UTC (every 8 hours).
+     * 
+     * Funding is exchanged between long and short position holders
+     * based on the current funding rate for each symbol.
+     */
+    @Scheduled(cron = "0 0 0,8,16 * * *", zone = "UTC")
+    public void processFundingPayments() {
+        log.info("Processing 8-hourly funding payments...");
+        try {
+            FundingService.FundingResult result = fundingService.processFundingPayments();
+            log.info("Funding complete: {} positions processed, {} failed, net {} USDT",
+                    result.positionsProcessed(),
+                    result.positionsFailed(),
+                    result.netFunding());
+        } catch (Exception e) {
+            log.error("Failed to process funding payments: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Manually trigger funding processing (for testing).
+     */
+    public FundingService.FundingResult triggerManualFunding() {
+        return fundingService.processFundingPayments();
     }
 }

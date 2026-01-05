@@ -3,7 +3,9 @@ package com.trading.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.trading.dto.ClosedPositionInfo;
+import com.trading.dto.ExtendedPositionInfo;
 import com.trading.dto.OpenedPositionInfo;
+import com.trading.dto.ReducedPositionInfo;
 import com.trading.entity.LogbookEntry;
 import com.trading.integration.grok.dto.AnalysisResult;
 import com.trading.repository.LogbookRepository;
@@ -41,8 +43,8 @@ public class LogbookService {
             List<ClosedPositionInfo> closed,
             List<OpenedPositionInfo> opened,
             List<String> kept,
-            List<String> extended,
-            List<String> reduced,
+            List<ExtendedPositionInfo> extended,
+            List<ReducedPositionInfo> reduced,
             BigDecimal totalEquity,
             BigDecimal unrealizedPnl,
             int openPositionsCount,

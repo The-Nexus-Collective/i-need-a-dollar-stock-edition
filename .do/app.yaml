@@ -15,7 +15,7 @@ services:
     dockerfile_path: backend/Dockerfile
     source_dir: backend
     github:
-      repo: The-Nexus-Collective/I-Need-A-Dollar
+      repo: The-Nexus-Collective/i-need-a-dollar-stock-edition
       branch: main
       deploy_on_push: true
     http_port: 8080
@@ -86,7 +86,7 @@ services:
     dockerfile_path: frontend/Dockerfile
     source_dir: frontend
     github:
-      repo: The-Nexus-Collective/I-Need-A-Dollar
+      repo: The-Nexus-Collective/i-need-a-dollar-stock-edition
       branch: main
       deploy_on_push: true
     http_port: 3000

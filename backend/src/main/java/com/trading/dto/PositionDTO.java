@@ -66,5 +66,18 @@ public class PositionDTO {
     
     @JsonProperty("liquidation_price")
     private BigDecimal liquidationPrice;
+    
+    // Margin system fields
+    @JsonProperty("margin_mode")
+    private String marginMode;
+    
+    @JsonProperty("isolated_margin")
+    private BigDecimal isolatedMargin;
+    
+    @JsonProperty("maint_margin_rate")
+    private BigDecimal maintMarginRate;
+    
+    @JsonProperty("margin_risk")
+    private BigDecimal marginRisk;
 }
 

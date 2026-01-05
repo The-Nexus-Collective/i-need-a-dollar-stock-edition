@@ -57,6 +57,16 @@ public enum TransactionType {
     /**
      * Forced liquidation due to margin call - position hit liquidation price
      */
-    MARGIN_CALL
+    MARGIN_CALL,
+    
+    /**
+     * Leverage change - adjusts margin allocation without closing position
+     */
+    LEVERAGE_CHANGE,
+    
+    /**
+     * Funding fee payment - 8-hourly funding between longs and shorts
+     */
+    FUNDING
 }
 

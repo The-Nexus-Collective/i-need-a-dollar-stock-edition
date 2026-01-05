@@ -5,9 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.trading.integration.grok.dto.AnalysisResult;
 import com.trading.integration.grok.dto.NewOpportunity;
 import com.trading.integration.grok.dto.PositionDecision;
+import com.trading.service.WisdomPromptBuilder;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -50,6 +52,9 @@ public class GrokService {
 
     private final ObjectMapper objectMapper;
     private WebClient webClient;
+    
+    @Autowired(required = false)
+    private WisdomPromptBuilder wisdomPromptBuilder;
 
     @PostConstruct
     public void init() {
@@ -181,6 +186,13 @@ public class GrokService {
         String timestamp = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'")
                 .withZone(ZoneOffset.UTC)
                 .format(Instant.now());
+        
+        // Include accumulated wisdom if available
+        String wisdomSection = "";
+        if (wisdomPromptBuilder != null && wisdomPromptBuilder.hasWisdom()) {
+            wisdomSection = wisdomPromptBuilder.buildWisdomSection();
+            log.info("Including {} accumulated wisdoms in prompt", wisdomPromptBuilder.getTotalWisdomCount());
+        }
 
         return String.format("""
             You are a professional crypto portfolio manager. Your task is to manage the portfolio in real-time.
@@ -226,11 +238,63 @@ public class GrokService {
             - Hold time > 24h without movement: Capital locked - CLOSE if no catalyst in sight
             - Hold time > 48h: Check if better to rotate into other opportunities
             
+            ═══════════════════════════════════════════════════════════════════
+            PRE-MORTEM HEALTH CHECK (SELF-LEARNING FEEDBACK!)
+            ═══════════════════════════════════════════════════════════════════
+            
+            If a PRE-MORTEM HEALTH CHECK section is provided above, it shows how your
+            predictions from when you opened each trade are comparing to reality NOW.
+            
+            INTERPRET THE HEALTH CHECK:
+            🔴 DANGER: Your max acceptable loss has been exceeded - YOU WERE WRONG
+               → Close immediately unless there's a very strong reversal signal
+               → Learn from the Bear Case you wrote - was it what happened?
+            
+            🟡 WARNING: Position approaching limits or exceeding expected hold time
+               → Review carefully - is your original thesis still valid?
+               → Consider reducing position size
+            
+            🟢 HEALTHY: Position performing within your expectations
+               → If exceeding target PnL - consider TAKE_PROFIT (REDUCE)
+               → Continue monitoring
+            
+            THIS IS YOUR OWN FEEDBACK! Use it to make better decisions.
+            
             For each open position, decide one of the following actions:
             - KEEP: Hold without changes
             - CLOSE: Close position completely (sentiment reversed or risk too high)
             - EXTEND: Add to position (sentiment strengthening, scale_percent = percent of current size to add)
             - REDUCE: Partially close position (take partial profits or reduce risk, scale_percent = percent to sell)
+            - INCREASE_LEVERAGE: Reduce margin buffer, accept higher liquidation risk (target_leverage = new leverage)
+            - DECREASE_LEVERAGE: Increase margin buffer, safer liquidation distance (target_leverage = new leverage)
+            
+            ═══════════════════════════════════════════════════════════════════
+            LEVERAGE MANAGEMENT
+            ═══════════════════════════════════════════════════════════════════
+            
+            IMPORTANT: Changing leverage does NOT change position size or exposure!
+            It only adjusts margin allocation:
+            - Liquidation Distance (closer/further from current price)
+            - ROE%% (Return on Equity - higher/lower based on margin)
+            - Available Capital (more/less free for other trades)
+            
+            INCREASE_LEVERAGE (e.g., 3x → 10x):
+            - When: Position in profit, high conviction, strong trend
+            - Effect: Less margin locked, liq price closer, ROE%% increases
+            - Risk: Higher liquidation risk
+            - Benefit: More free capital for other opportunities
+            
+            DECREASE_LEVERAGE (e.g., 10x → 3x):
+            - When: Margin risk increasing but don't want to close
+            - Effect: More margin locked, liq price further, ROE%% decreases
+            - Risk: More capital locked
+            - Benefit: Safer liquidation distance
+            
+            WHEN TO USE LEVERAGE CHANGE INSTEAD OF CLOSE/REDUCE:
+            - Margin Risk 50-70%%, still bullish → DECREASE_LEVERAGE (not CLOSE)
+            - Margin Risk > 70%% → CLOSE (too dangerous for leverage change)
+            - +30%% PnL, trend intact → INCREASE_LEVERAGE (free up margin)
+            - Low free capital → INCREASE_LEVERAGE on winning positions
             
             ═══════════════════════════════════════════════════════════════════
             LONG AND SHORT STRATEGY - ACTIVELY USE BOTH DIRECTIONS!
@@ -276,6 +340,20 @@ public class GrokService {
             - Conviction must be > 60
             
             ═══════════════════════════════════════════════════════════════════
+            PRE-MORTEM REQUIREMENT (CRITICAL FOR SELF-LEARNING!)
+            ═══════════════════════════════════════════════════════════════════
+            
+            For EVERY new opportunity, you MUST include:
+            1. pre_mortem: "This trade FAILS if: [specific condition]"
+            2. bull_case: Why this trade should succeed
+            3. bear_case: Counter-argument (devil's advocate)
+            4. expected_hold_hours_min/max: How long you expect to hold
+            5. target_pnl_percent: Target profit percentage
+            6. max_acceptable_loss_percent: Maximum acceptable loss
+            
+            This data helps you learn from your mistakes!
+            
+            ═══════════════════════════════════════════════════════════════════
             OUTPUT FORMAT (STRICTLY FOLLOW!)
             ═══════════════════════════════════════════════════════════════════
             
@@ -293,7 +371,16 @@ public class GrokService {
                   "action": "KEEP",
                   "reason": "Strong bullish sentiment on X",
                   "current_sentiment": 65,
-                  "scale_percent": 0
+                  "scale_percent": 0,
+                  "target_leverage": 0
+                },
+                {
+                  "symbol": "ETHUSDT",
+                  "action": "DECREASE_LEVERAGE",
+                  "reason": "Margin risk at 55%%, reducing leverage for safety",
+                  "current_sentiment": 45,
+                  "scale_percent": 0,
+                  "target_leverage": 3
                 }
               ],
               
@@ -306,7 +393,14 @@ public class GrokService {
                   "sentiment_score": 72,
                   "narrative_strength": 85,
                   "reason": "Breaking: Avalanche update, strong whale accumulation",
-                  "key_signals": ["@whale_alert: Large buy", "Avalanche Foundation announcement"]
+                  "key_signals": ["@whale_alert: Large buy", "Avalanche Foundation announcement"],
+                  "pre_mortem": "This trade FAILS if: BTC drops below 65k causing altcoin cascade, or if whale selling resumes within 4h",
+                  "bull_case": "Strong institutional interest, partnership announcement pending, volume spike indicates accumulation",
+                  "bear_case": "Overbought on 4h RSI, resistance at $45, general market weakness",
+                  "expected_hold_hours_min": 4,
+                  "expected_hold_hours_max": 24,
+                  "target_pnl_percent": 15,
+                  "max_acceptable_loss_percent": 10
                 }
               ],
               
@@ -317,13 +411,15 @@ public class GrokService {
             
             IMPORTANT:
             - All symbols in Binance Futures format (e.g. BTCUSDT)
-            - Leverage between 1-10 based on conviction
+            - Leverage between 1-10 based on conviction for NEW positions
             - scale_percent only used with EXTEND/REDUCE (10-100)
-            
+            - target_leverage only used with INCREASE_LEVERAGE/DECREASE_LEVERAGE (1-125)
+            - pre_mortem, bull_case, bear_case are REQUIRED for new opportunities!
+            %s
             ═══════════════════════════════════════════════════════════════════
             ANALYZE NOW - OUTPUT JSON ONLY
             ═══════════════════════════════════════════════════════════════════
-            """, timestamp, positionsContext, deploymentInfo, availableSlots);
+            """, timestamp, positionsContext, deploymentInfo, availableSlots, wisdomSection);
     }
 
     private AnalysisResult parseResponse(String response, String rawPrompt) {
@@ -360,6 +456,13 @@ public class GrokService {
                         scalePercent = pd.has("scale_percent") ? pd.get("scale_percent").asInt(50) : 50;
                         scalePercent = Math.max(10, Math.min(100, scalePercent));
                     }
+                    
+                    int targetLeverage = 0;
+                    if (action == PositionDecision.Action.INCREASE_LEVERAGE || 
+                        action == PositionDecision.Action.DECREASE_LEVERAGE) {
+                        targetLeverage = pd.has("target_leverage") ? pd.get("target_leverage").asInt(5) : 5;
+                        targetLeverage = Math.max(1, Math.min(125, targetLeverage));
+                    }
 
                     positionDecisions.add(PositionDecision.builder()
                             .symbol(pd.has("symbol") ? pd.get("symbol").asText() : "")
@@ -367,6 +470,7 @@ public class GrokService {
                             .reason(pd.has("reason") ? pd.get("reason").asText() : "")
                             .currentSentiment(pd.has("current_sentiment") ? pd.get("current_sentiment").asInt() : 0)
                             .scalePercent(scalePercent)
+                            .targetLeverage(targetLeverage)
                             .build());
                 }
             }
@@ -393,6 +497,17 @@ public class GrokService {
                         }
                     }
 
+                    // Parse Pre-Mortem fields
+                    String preMortem = opp.has("pre_mortem") ? opp.get("pre_mortem").asText() : null;
+                    String bullCase = opp.has("bull_case") ? opp.get("bull_case").asText() : null;
+                    String bearCase = opp.has("bear_case") ? opp.get("bear_case").asText() : null;
+                    Integer expectedHoldMin = opp.has("expected_hold_hours_min") ? opp.get("expected_hold_hours_min").asInt() : null;
+                    Integer expectedHoldMax = opp.has("expected_hold_hours_max") ? opp.get("expected_hold_hours_max").asInt() : null;
+                    BigDecimal targetPnl = opp.has("target_pnl_percent") 
+                            ? new BigDecimal(opp.get("target_pnl_percent").asText()) : null;
+                    BigDecimal maxLoss = opp.has("max_acceptable_loss_percent") 
+                            ? new BigDecimal(opp.get("max_acceptable_loss_percent").asText()) : null;
+
                     opportunities.add(NewOpportunity.builder()
                             .symbol(opp.has("symbol") ? opp.get("symbol").asText() : "")
                             .direction(NewOpportunity.Direction.valueOf(dirStr))
@@ -402,6 +517,13 @@ public class GrokService {
                             .narrativeStrength(opp.has("narrative_strength") ? opp.get("narrative_strength").asInt() : 0)
                             .reason(opp.has("reason") ? opp.get("reason").asText() : "")
                             .keySignals(keySignals.subList(0, Math.min(5, keySignals.size())))
+                            .preMortem(preMortem)
+                            .bullCase(bullCase)
+                            .bearCase(bearCase)
+                            .expectedHoldHoursMin(expectedHoldMin)
+                            .expectedHoldHoursMax(expectedHoldMax)
+                            .targetPnlPercent(targetPnl)
+                            .maxAcceptableLossPercent(maxLoss)
                             .build());
                 }
             }

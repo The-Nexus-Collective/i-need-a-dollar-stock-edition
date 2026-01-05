@@ -76,6 +76,11 @@ public class PortfolioService {
                     .multiply(BigDecimal.valueOf(100));
         }
         
+        // Get detailed cost breakdown from ledger metadata
+        BigDecimal totalFees = accountingService.getTotalFees();
+        BigDecimal totalSpread = accountingService.getTotalSpread();
+        BigDecimal totalSlippage = accountingService.getTotalSlippage();
+        
         return PortfolioResponse.builder()
                 .totalEquity(totalEquity)
                 .initialCapital(startingCapital)
@@ -91,9 +96,9 @@ public class PortfolioService {
                 .losingTrades(state.getLosingTrades())
                 .winRate(state.getWinRate())
                 .totalVolume(BigDecimal.ZERO)
-                .totalFees(tradingCosts)
-                .totalSpread(BigDecimal.ZERO)
-                .totalSlippage(BigDecimal.ZERO)
+                .totalFees(totalFees)
+                .totalSpread(totalSpread)
+                .totalSlippage(totalSlippage)
                 .totalTradingCosts(tradingCosts)
                 .var95(null)
                 .maxDrawdown(state.getMaxDrawdown())

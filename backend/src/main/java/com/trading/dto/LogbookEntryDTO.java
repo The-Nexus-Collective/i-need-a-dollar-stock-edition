@@ -36,10 +36,10 @@ public class LogbookEntryDTO {
     List<String> positionsKept;
     
     @JsonProperty("positions_extended")
-    List<String> positionsExtended;
+    List<ScaledPositionAction> positionsExtended;
     
     @JsonProperty("positions_reduced")
-    List<String> positionsReduced;
+    List<ScaledPositionAction> positionsReduced;
     
     @JsonProperty("coins_analyzed")
     int coinsAnalyzed;
@@ -82,5 +82,23 @@ public class LogbookEntryDTO {
         
         @JsonProperty("pnl_percent")
         BigDecimal pnlPercent;
+    }
+    
+    /**
+     * DTO for scaled position actions (extend/reduce).
+     * Matches frontend expectations: { symbol, scale_percent, reason }
+     */
+    @Value
+    @Builder
+    public static class ScaledPositionAction {
+        String symbol;
+        
+        @JsonProperty("scale_percent")
+        int scalePercent;
+        
+        BigDecimal price;
+        BigDecimal size;
+        BigDecimal pnl;
+        String reason;
     }
 }

@@ -78,6 +78,39 @@ public class Position {
     @Column(name = "prediction_id")
     private String predictionId;
 
+    // ========== Margin System Fields ==========
+    
+    /**
+     * Margin mode: ISOLATED (per position) or CROSS (shared).
+     * Currently only ISOLATED is supported.
+     */
+    @Column(name = "margin_mode", length = 10)
+    @Builder.Default
+    private String marginMode = "ISOLATED";
+    
+    /**
+     * Isolated margin allocated to this position.
+     * Calculated as: sizeUsdt / leverage
+     */
+    @Column(name = "isolated_margin", precision = 20, scale = 8)
+    private BigDecimal isolatedMargin;
+    
+    /**
+     * Maintenance Margin Rate from Binance bracket.
+     * Default 0.4% for small positions.
+     */
+    @Column(name = "maint_margin_rate", precision = 10, scale = 6)
+    @Builder.Default
+    private BigDecimal maintMarginRate = new BigDecimal("0.004");
+    
+    /**
+     * Calculated liquidation price based on leverage and MMR.
+     * LONG: entry * (1 - 1/leverage + MMR)
+     * SHORT: entry * (1 + 1/leverage - MMR)
+     */
+    @Column(name = "liquidation_price", precision = 20, scale = 8)
+    private BigDecimal liquidationPrice;
+
     @Column(name = "created_at")
     @Builder.Default
     private Instant createdAt = Instant.now();
@@ -86,6 +119,51 @@ public class Position {
     @Builder.Default
     private Instant updatedAt = Instant.now();
 
+    // ========== Self-Learning Pre-Mortem Fields ==========
+    
+    /**
+     * Pre-Mortem: Grok's prediction of what could cause this trade to fail.
+     * Written before trade entry, evaluated after trade exit.
+     */
+    @Column(name = "pre_mortem", columnDefinition = "TEXT")
+    private String preMortem;
+    
+    /**
+     * Bull case: Why this trade should succeed.
+     */
+    @Column(name = "bull_case", columnDefinition = "TEXT")
+    private String bullCase;
+    
+    /**
+     * Bear case: Counter-argument / devil's advocate.
+     */
+    @Column(name = "bear_case", columnDefinition = "TEXT")
+    private String bearCase;
+    
+    /**
+     * Expected minimum hold time in hours.
+     */
+    @Column(name = "expected_hold_hours_min")
+    private Integer expectedHoldHoursMin;
+    
+    /**
+     * Expected maximum hold time in hours.
+     */
+    @Column(name = "expected_hold_hours_max")
+    private Integer expectedHoldHoursMax;
+    
+    /**
+     * Target PnL percentage for this trade.
+     */
+    @Column(name = "target_pnl_percent", precision = 10, scale = 4)
+    private BigDecimal targetPnlPercent;
+    
+    /**
+     * Maximum acceptable loss percentage.
+     */
+    @Column(name = "max_acceptable_loss_percent", precision = 10, scale = 4)
+    private BigDecimal maxAcceptableLossPercent;
+
     @Transient
     private BigDecimal currentPrice;
 
@@ -93,7 +171,17 @@ public class Position {
     private BigDecimal unrealizedPnl;
 
     /**
-     * Calculate unrealized PnL for open position
+     * Calculate unrealized PnL for open position.
+     * 
+     * Note: PnL = priceDiff * quantity
+     * The leverage is NOT multiplied here because:
+     * - quantity = sizeUsdt (notional) / price
+     * - The notional already represents the full leveraged position size
+     * - Multiplying by leverage again would be double-counting
+     * 
+     * Example: $2000 margin with 10x leverage = $20,000 notional
+     * - quantity = 20000 / 50000 = 0.4 BTC
+     * - If price rises 10% to $55,000: PnL = 5000 * 0.4 = $2000 (100% return on margin)
      */
     public BigDecimal calculateUnrealizedPnl(BigDecimal price) {
         if (price == null || this.entryPrice == null) return BigDecimal.ZERO;
@@ -103,7 +191,7 @@ public class Position {
             priceDiff = priceDiff.negate();
         }
         
-        return priceDiff.multiply(quantity).multiply(BigDecimal.valueOf(leverage));
+        return priceDiff.multiply(quantity);
     }
 
     /**

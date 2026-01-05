@@ -783,6 +783,80 @@ class ApiClient {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // LEARNING - Self-Learning System
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  async getLearningWisdom() {
+    return this.fetch<Array<{
+      id: string
+      type: 'WARNING_SIGNAL' | 'BLIND_SPOT' | 'TIME_LESSON'
+      description: string
+      occurrences: number
+      firstOccurred: string
+      lastOccurred: string
+      symbolPattern: string | null
+      directionPattern: string | null
+    }>>('/api/learning/wisdom')
+  }
+
+  async getLearningTimeline(limit = 20) {
+    return this.fetch<Array<{
+      id: string
+      positionId: string
+      symbol: string
+      direction: string
+      entryPrice: number
+      exitPrice: number
+      pnlPercent: number
+      holdHours: number
+      preMortem: string
+      whatHappened: string
+      preMortemWasCorrect: boolean
+      lessonType: string | null
+      lessonLearned: string | null
+      reflectedAt: string
+    }>>(`/api/learning/timeline?limit=${limit}`)
+  }
+
+  async getLearningStats() {
+    return this.fetch<{
+      totalReflections: number
+      correctPreMortems: number
+      preMortemAccuracyPercent: number
+      winRateBeforeLearning: number
+      winRateWithLearning: number
+      avgPnlBeforeLearning: number
+      avgPnlWithLearning: number
+      totalWisdoms: number
+      warningSignals: number
+      blindSpots: number
+      timeLessons: number
+      winRateImprovement: number
+      avgPnlImprovement: number
+      learningEffective: boolean
+    }>('/api/learning/stats')
+  }
+
+  async getPreMortemStatus() {
+    return this.fetch<Array<{
+      positionId: string
+      symbol: string
+      direction: string
+      entryPrice: number
+      currentPrice: number
+      currentPnlPercent: number
+      holdHours: number
+      preMortem: string | null
+      bullCase: string | null
+      bearCase: string | null
+      expectedHoldHoursMin: number | null
+      expectedHoldHoursMax: number | null
+      status: 'OK' | 'WARNING' | 'TRIGGERED'
+      signals: string[]
+    }>>('/api/learning/positions/premortem-status')
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // PORTFOLIO MANAGER
   // ═══════════════════════════════════════════════════════════════════════════
 

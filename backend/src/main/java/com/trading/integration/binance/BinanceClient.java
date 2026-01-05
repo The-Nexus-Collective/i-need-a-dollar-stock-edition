@@ -1,6 +1,8 @@
 package com.trading.integration.binance;
 
+import com.trading.service.FeeService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -29,12 +31,13 @@ public class BinanceClient {
     @Value("${trading.mode:paper}")
     private String tradingMode;
 
+    @Autowired
+    private FeeService feeService;
+
     private WebClient webClient;
     private final Map<String, BigDecimal> priceCache = new ConcurrentHashMap<>();
     
-    // Trading costs for realistic simulation
-    private static final BigDecimal TAKER_FEE = new BigDecimal("0.0004"); // 0.04%
-    private static final BigDecimal MAKER_FEE = new BigDecimal("0.0002"); // 0.02%
+    // Slippage for realistic simulation (applied to fill price)
     private static final BigDecimal SLIPPAGE_BASE = new BigDecimal("0.0001"); // 0.01%
 
     @PostConstruct
@@ -116,22 +119,25 @@ public class BinanceClient {
                     .build();
         }
 
-        // Apply slippage
+        // Apply slippage to fill price (simulates market impact)
         BigDecimal slippageMultiplier = BigDecimal.ONE.add(
                 "BUY".equalsIgnoreCase(side) ? SLIPPAGE_BASE : SLIPPAGE_BASE.negate()
         );
         BigDecimal fillPrice = price.multiply(slippageMultiplier);
 
-        // Calculate trading costs
-        BigDecimal fee = sizeUsdt.multiply(TAKER_FEE);
-        BigDecimal slippage = sizeUsdt.multiply(SLIPPAGE_BASE);
+        // Calculate trading costs using FeeService (respects VIP tier)
+        // Note: Slippage is already reflected in the fillPrice, so we don't add it as separate cost
+        // The slippage cost is: |fillPrice - price| * quantity, which equals sizeUsdt * SLIPPAGE_BASE
+        // We track this for reporting purposes but it's NOT an additional deduction
+        BigDecimal fee = feeService.calculateTakerFee(sizeUsdt);
+        BigDecimal slippage = BigDecimal.ZERO; // Already baked into fillPrice - do not double-count
         BigDecimal spread = sizeUsdt.multiply(new BigDecimal("0.0001")); // 0.01% spread estimate
 
         // Calculate quantity
         BigDecimal quantity = sizeUsdt.divide(fillPrice, 8, RoundingMode.HALF_UP);
 
-        log.info("Paper trade opened: {} {} {} @ {} (fee: {}, slippage: {}, spread: {})", 
-                 side, quantity, symbol, fillPrice, fee, slippage, spread);
+        log.info("Paper trade opened: {} {} {} @ {} (fee: {}, spread: {}, slippage in price: {}%)", 
+                 side, quantity, symbol, fillPrice, fee, spread, SLIPPAGE_BASE.multiply(new BigDecimal("100")));
 
         return TradeResult.builder()
                 .success(true)
@@ -172,13 +178,14 @@ public class BinanceClient {
             pnl = entryPrice.subtract(fillPrice).multiply(quantity);
         }
 
-        // Calculate and deduct fee
+        // Calculate and deduct fee using FeeService (respects VIP tier)
         BigDecimal sizeUsdt = fillPrice.multiply(quantity);
-        BigDecimal fee = sizeUsdt.multiply(TAKER_FEE);
+        BigDecimal fee = feeService.calculateTakerFee(sizeUsdt);
 
         log.info("Paper trade closed: {} {} @ {} (PnL: {}, fee: {})", 
                  quantity, symbol, fillPrice, pnl, fee);
 
+        // Return raw PnL without fee subtraction - accounting handles fees separately
         return TradeResult.builder()
                 .success(true)
                 .symbol(symbol)
@@ -186,7 +193,7 @@ public class BinanceClient {
                 .price(fillPrice)
                 .quantity(quantity)
                 .fee(fee)
-                .pnl(pnl.subtract(fee))
+                .pnl(pnl)
                 .build();
     }
 
