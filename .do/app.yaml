@@ -1,117 +1,103 @@
-# ═══════════════════════════════════════════════════════════════════════════════
-# Digital Ocean App Platform Specification
-# I-Need-A-Dollar Trading Platform
-# ═══════════════════════════════════════════════════════════════════════════════
-#
-# Deploy: doctl apps create --spec .do/app.yaml
-# Update: doctl apps update <app-id> --spec .do/app.yaml
-# ═══════════════════════════════════════════════════════════════════════════════
-
-name: i-need-a-dollar-crypto-edition
+name: i-need-a-dollar-stock-edition
 region: fra
-
-# ─── GLOBAL ENVIRONMENT VARIABLES ─────────────────────────────────────────────
-# These are inherited by ALL services
-envs:
-  # XAI/Grok API Key - Must be set via: doctl apps update <app-id> --env XAI_API_KEY=<your-key>
-  - key: XAI_API_KEY
-    scope: RUN_TIME
-    type: SECRET
-
-# ─── SERVICES ─────────────────────────────────────────────────────────────────
-
-services:
-  # ═══════════════════════════════════════════════════════════════════════════
-  # BACKEND - Java/Spring Boot API
-  # Liquibase handles database migrations automatically on startup
-  # ═══════════════════════════════════════════════════════════════════════════
-  - name: api
-    github:
-      repo: The-Nexus-Collective/I-Need-A-Dollar
-      branch: main
-      deploy_on_push: true
-    source_dir: backend
-    dockerfile_path: backend/Dockerfile
-    http_port: 8080
-    instance_size_slug: basic-xxs
-    instance_count: 1
-    routes:
-      - path: /api
-        preserve_path_prefix: true
-      - path: /health
-        preserve_path_prefix: true
-      - path: /ws
-        preserve_path_prefix: true
-      - path: /docs
-        preserve_path_prefix: true
-    envs:
-      # Spring profile for Docker/production
-      - key: SPRING_PROFILES_ACTIVE
-        scope: RUN_TIME
-        value: docker
-      # Database connection (Digital Ocean managed PostgreSQL)
-      - key: SPRING_DATASOURCE_URL
-        scope: RUN_TIME
-        value: jdbc:postgresql://${db.HOSTNAME}:${db.PORT}/${db.DATABASE}?sslmode=require
-      - key: SPRING_DATASOURCE_USERNAME
-        scope: RUN_TIME
-        value: ${db.USERNAME}
-      - key: SPRING_DATASOURCE_PASSWORD
-        scope: RUN_TIME
-        value: ${db.PASSWORD}
-      # Trading configuration
-      - key: MODE
-        scope: RUN_TIME
-        value: paper
-      - key: TRADING_CAPITAL_STARTING
-        scope: RUN_TIME
-        value: "100000"
-      - key: TRADING_POSITION_MAX_POSITIONS
-        scope: RUN_TIME
-        value: "50"
-      - key: TRADING_POSITION_SIZE_PERCENT
-        scope: RUN_TIME
-        value: "0.02"
-      # CORS
-      - key: CORS_ALLOW_ALL
-        scope: RUN_TIME
-        value: "true"
-      # Note: XAI_API_KEY is set at app-level and automatically inherited
-    health_check:
-      http_path: /health
-      initial_delay_seconds: 60
-      period_seconds: 30
-      timeout_seconds: 10
-      failure_threshold: 3
-
-  # ═══════════════════════════════════════════════════════════════════════════
-  # FRONTEND - Next.js
-  # ═══════════════════════════════════════════════════════════════════════════
-  - name: frontend
-    github:
-      repo: The-Nexus-Collective/I-Need-A-Dollar
-      branch: main
-      deploy_on_push: true
-    source_dir: frontend
-    dockerfile_path: frontend/Dockerfile
-    http_port: 3000
-    instance_size_slug: basic-xxs
-    instance_count: 1
-    routes:
-      - path: /
-    envs:
-      - key: NEXT_PUBLIC_API_URL
-        scope: RUN_AND_BUILD_TIME
-        value: ${APP_URL}
-      - key: NEXT_PUBLIC_WS_URL
-        scope: RUN_AND_BUILD_TIME
-        value: wss://${APP_DOMAIN}/ws
-
-# ─── DATABASES ────────────────────────────────────────────────────────────────
+features:
+  - buildpack-stack=ubuntu-22
 
 databases:
   - name: db
     engine: PG
-    cluster_name: i-need-a-dollar-crypto-edition-db
-    production: true
+    version: "15"
+    size: db-s-dev-database
+    num_nodes: 1
 
+services:
+  - name: backend
+    dockerfile_path: backend/Dockerfile
+    source_dir: backend
+    github:
+      repo: The-Nexus-Collective/I-Need-A-Dollar
+      branch: main
+      deploy_on_push: true
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: professional-xs
+    routes:
+      - path: /api
+      - path: /ws
+      - path: /actuator
+    health_check:
+      http_path: /actuator/health
+      initial_delay_seconds: 60
+      period_seconds: 30
+      timeout_seconds: 10
+      success_threshold: 1
+      failure_threshold: 3
+    envs:
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        value: ${db.JDBC_DATABASE_URL}
+      - key: DB_USERNAME
+        scope: RUN_TIME
+        value: ${db.USERNAME}
+      - key: DB_PASSWORD
+        scope: RUN_TIME
+        value: ${db.PASSWORD}
+      - key: MODE
+        scope: RUN_TIME
+        value: paper
+      - key: XAI_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: BINANCE_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: BINANCE_API_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: CYCLE_INTERVAL
+        scope: RUN_TIME
+        value: "600000"
+      - key: STARTING_CAPITAL
+        scope: RUN_TIME
+        value: "100000"
+      - key: POSITION_SIZE_PCT
+        scope: RUN_TIME
+        value: "0.02"
+      - key: MAX_POSITIONS
+        scope: RUN_TIME
+        value: "50"
+      - key: MIN_DEPLOYMENT_RATIO
+        scope: RUN_TIME
+        value: "0.75"
+      - key: MAX_DEPLOYMENT_RATIO
+        scope: RUN_TIME
+        value: "0.90"
+      - key: API_PORT
+        scope: RUN_TIME
+        value: "8080"
+      - key: CORS_ALLOW_ALL
+        scope: RUN_TIME
+        value: "true"
+      - key: SPRING_PROFILES_ACTIVE
+        scope: RUN_TIME
+        value: docker
+
+  - name: frontend
+    dockerfile_path: frontend/Dockerfile
+    source_dir: frontend
+    github:
+      repo: The-Nexus-Collective/I-Need-A-Dollar
+      branch: main
+      deploy_on_push: true
+    http_port: 3000
+    instance_count: 1
+    instance_size_slug: professional-xs
+    routes:
+      - path: /
+    envs:
+      - key: NEXT_PUBLIC_API_URL
+        scope: BUILD_TIME
+        value: ${APP_URL}/api
+      - key: NEXT_PUBLIC_WS_URL
+        scope: BUILD_TIME
+        value: wss://${APP_DOMAIN}/ws/equity

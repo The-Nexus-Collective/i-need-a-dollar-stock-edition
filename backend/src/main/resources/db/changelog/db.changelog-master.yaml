@@ -28,3 +28,13 @@ databaseChangeLog:
             relativeToChangelogFile: true
             splitStatements: true
             stripComments: false
+
+  - changeSet:
+      id: 004-fix-exit-reason-length
+      author: trading-platform
+      changes:
+        - sqlFile:
+            path: 004-fix-exit-reason-length.sql
+            relativeToChangelogFile: true
+            splitStatements: true
+            stripComments: false

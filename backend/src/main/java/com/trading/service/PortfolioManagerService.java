@@ -593,14 +593,14 @@ public class PortfolioManagerService {
 
         String status;
         if (deploymentRatio.compareTo(minDeploymentRatio) < 0) {
-            status = "⚠️ UNTER ZIEL - Mehr Positionen eröffnen!";
+            status = "⚠️ BELOW TARGET - Open more positions!";
         } else if (deploymentRatio.compareTo(maxDeploymentRatio) > 0) {
-            status = "⚠️ ÜBER LIMIT - Keine neuen Positionen!";
+            status = "⚠️ OVER LIMIT - No new positions!";
         } else {
-            status = "✅ Im Zielbereich";
+            status = "✅ In target range";
         }
 
-        return String.format("DEPLOYMENT: %.1f%% (Ziel: %.0f%%-%.0f%%) %s\nVerfügbares Kapital: %s USDT\nOffene Slots: %d/%d",
+        return String.format("DEPLOYMENT: %.1f%% (Target: %.0f%%-%.0f%%) %s\nAvailable capital: %s USDT\nOpen slots: %d/%d",
                 deploymentRatio.multiply(BigDecimal.valueOf(100)),
                 minDeploymentRatio.multiply(BigDecimal.valueOf(100)),
                 maxDeploymentRatio.multiply(BigDecimal.valueOf(100)),

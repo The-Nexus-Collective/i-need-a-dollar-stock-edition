@@ -65,7 +65,7 @@ public class Trade {
     @Column(name = "duration_seconds")
     private Integer durationSeconds;
 
-    @Column(name = "exit_reason", nullable = false, length = 20)
+    @Column(name = "exit_reason", nullable = false, length = 100)
     private String exitReason;
 
     @Column(precision = 5, scale = 2)

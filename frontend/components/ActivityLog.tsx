@@ -340,9 +340,9 @@ export function ActivityLog({
           <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-void/50 flex items-center justify-center">
             <Activity className="w-7 h-7 text-text-dim" />
           </div>
-          <p className="text-text-muted font-medium mb-1">Keine Aktivitäten</p>
+          <p className="text-text-muted font-medium mb-1">No Activity</p>
           <p className="text-text-dim text-xs max-w-xs mx-auto">
-            Bot-Aktivitäten werden hier in Echtzeit angezeigt, sobald Events eintreffen.
+            Bot activities will appear here in real-time as events occur.
           </p>
         </div>
       )}
@@ -352,10 +352,10 @@ export function ActivityLog({
         <div className="mt-3 pt-3 border-t border-glass-border flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-accent-emerald animate-pulse" />
-            <span className="text-[10px] text-text-dim">Live-Updates aktiv</span>
+            <span className="text-[10px] text-text-dim">Live updates active</span>
           </div>
           <span className="text-[10px] text-text-dim font-mono">
-            Max. 200 Einträge
+            Max. 200 entries
           </span>
         </div>
       )}

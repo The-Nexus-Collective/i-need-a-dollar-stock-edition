@@ -224,9 +224,9 @@ export function EquityChart({
             <div className="w-16 h-16 rounded-full bg-void/50 flex items-center justify-center mb-4">
               <TrendingUp className="w-8 h-8 text-text-dim" />
             </div>
-            <p className="text-text-muted font-medium mb-1">Keine Equity-Daten verfügbar</p>
+            <p className="text-text-muted font-medium mb-1">No equity data available</p>
             <p className="text-text-dim text-xs max-w-xs">
-              Der Chart zeigt echte Portfolio-Snapshots sobald der Bot aktiv handelt.
+              The chart will show real portfolio snapshots once the bot starts trading.
             </p>
           </div>
         )}

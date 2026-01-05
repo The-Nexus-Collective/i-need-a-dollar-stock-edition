@@ -218,25 +218,25 @@ function formatActivityEntry(event: any): ActivityEntry | null {
       description = `${coin} Score: ${data.combined_score?.toFixed(1) || '?'}`
       break
     case 'order.submitted':
-      title = `Order gesendet`
+      title = `Order Submitted`
       description = `${data.side?.toUpperCase()} ${coin} @ ${data.price?.toLocaleString() || 'Market'}`
       break
     case 'order.filled':
-      title = `Order ausgeführt`
+      title = `Order Filled`
       description = `${data.side?.toUpperCase()} ${data.quantity} ${coin} @ $${data.fill_price?.toLocaleString()}`
       break
     case 'order.rejected':
-      title = `Order abgelehnt`
-      description = `${coin}: ${data.reason || 'Unbekannter Grund'}`
+      title = `Order Rejected`
+      description = `${coin}: ${data.reason || 'Unknown reason'}`
       break
     case 'position.opened':
-      title = `Position eröffnet`
+      title = `Position Opened`
       description = `${data.side?.toUpperCase()} ${coin} @ $${data.entry_price?.toLocaleString()}`
       break
     case 'position.closed':
       const pnl = data.realized_pnl
       const pnlStr = pnl >= 0 ? `+$${pnl?.toFixed(2)}` : `-$${Math.abs(pnl)?.toFixed(2)}`
-      title = `Position geschlossen`
+      title = `Position Closed`
       description = `${coin}: ${pnlStr} (${data.close_reason || 'manual'})`
       break
     case 'position.updated':
@@ -244,15 +244,15 @@ function formatActivityEntry(event: any): ActivityEntry | null {
       description = `${coin} PnL: ${data.unrealized_pnl_percent?.toFixed(2)}%`
       break
     case 'risk.approved':
-      title = `Risiko genehmigt`
+      title = `Risk Approved`
       description = `${coin} ${data.action?.toUpperCase()}`
       break
     case 'risk.rejected':
-      title = `Risiko abgelehnt`
-      description = `${coin}: ${data.rejection_reasons?.join(', ') || 'Limit überschritten'}`
+      title = `Risk Rejected`
+      description = `${coin}: ${data.rejection_reasons?.join(', ') || 'Limit exceeded'}`
       break
     case 'risk.limit_breach':
-      title = `Risiko-Limit erreicht`
+      title = `Risk Limit Breached`
       description = `${data.limit_type}: ${data.current_value?.toFixed(2)} > ${data.threshold_value?.toFixed(2)}`
       break
     case 'portfolio.snapshot':

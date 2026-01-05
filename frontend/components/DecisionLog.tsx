@@ -84,11 +84,11 @@ function formatFilterReason(reason: string | null): string {
   if (!reason) return 'Kein Grund angegeben'
   
   const reasonMap: Record<string, string> = {
-    'score_below_threshold': 'Score unter Schwellenwert (< 65)',
-    'volume_filter_failed': 'Volumen-Filter nicht bestanden',
-    'all_filtered': 'Alle Coins gefiltert',
-    'no_valid_signals': 'Keine validen Signale',
-    'flatten_time': 'Tägliche Glattstellung (23:55)',
+    'score_below_threshold': 'Score below threshold (< 65)',
+    'volume_filter_failed': 'Volume filter not passed',
+    'all_filtered': 'All coins filtered',
+    'no_valid_signals': 'No valid signals',
+    'flatten_time': 'Daily flatten (23:55)',
   }
   
   return reasonMap[reason] || reason
@@ -193,12 +193,12 @@ function DecisionCard({ decision }: { decision: TradingDecision }) {
           {decision.executed ? (
             <>
               <CheckCircle className="w-3 h-3 text-accent-emerald" />
-              <span className="text-[10px] text-accent-emerald">Ausgeführt</span>
+              <span className="text-[10px] text-accent-emerald">Executed</span>
             </>
           ) : (
             <>
               <XCircle className="w-3 h-3 text-text-dim" />
-              <span className="text-[10px] text-text-dim">Nicht ausgeführt</span>
+              <span className="text-[10px] text-text-dim">Not executed</span>
             </>
           )}
         </div>
@@ -292,9 +292,9 @@ export function DecisionLog({ decisions, stats }: DecisionLogProps) {
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-void/50 flex items-center justify-center">
               <BarChart2 className="w-8 h-8 text-text-dim" />
             </div>
-            <p className="text-text-muted font-medium mb-1">Keine Entscheidungen</p>
+            <p className="text-text-muted font-medium mb-1">No Decisions</p>
             <p className="text-text-dim text-xs max-w-xs mx-auto">
-              Trading-Entscheidungen werden stündlich getroffen und hier protokolliert.
+              Trading decisions are made hourly and logged here.
             </p>
           </div>
         )}

@@ -147,7 +147,7 @@ public class PositionService {
         Instant exitTime = Instant.now();
         long durationSeconds = java.time.Duration.between(position.getEntryTime(), exitTime).getSeconds();
         
-        position.setStatus(reason != null ? reason : "CLOSED");
+        position.setStatus("CLOSED");
         position.setExitTime(exitTime);
         position.setExitPrice(exitPrice);
         position.setRealizedPnl(pnl);
@@ -162,7 +162,7 @@ public class PositionService {
                 pnl,
                 exitFee,
                 exitPrice,
-                reason != null ? reason : "CLOSED"
+                "CLOSED"
         );
         
         // Create trade record for history

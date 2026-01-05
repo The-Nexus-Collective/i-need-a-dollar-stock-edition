@@ -287,12 +287,12 @@ class PortfolioManager:
             if deployment_pct < MIN_DEPLOYMENT_RATIO * 100:
                 gap = total_equity * MIN_DEPLOYMENT_RATIO - total_deployed
                 deployment_info = f"""
-⚠️ KRITISCH: KAPITAL-DEPLOYMENT UNTER MINIMUM!
-- Aktuelles Deployment: {deployment_pct:.1f}%
-- Minimum erforderlich: {MIN_DEPLOYMENT_RATIO * 100:.0f}%
-- Zusätzlich zu deployen: ${gap:,.2f}
+⚠️ CRITICAL: CAPITAL DEPLOYMENT BELOW MINIMUM!
+- Current deployment: {deployment_pct:.1f}%
+- Minimum required: {MIN_DEPLOYMENT_RATIO * 100:.0f}%
+- Additional to deploy: ${gap:,.2f}
 
-PRIORITÄT: Öffne neue Positionen oder erweitere bestehende (EXTEND), um das Minimum zu erreichen!
+PRIORITY: Open new positions or extend existing ones (EXTEND) to reach the minimum!
 """
             
             logger.info(f"Calling Grok with {len(positions)} positions, {available_slots} slots available...")
