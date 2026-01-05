@@ -58,8 +58,8 @@ interface PortfolioPosition {
   liquidation_price: number
   margin_risk_pct: number
   entry_time: string   // Backend sends entry_time, not opened_at
-  reason: string
-  reasoning?: string   // Backend may send reasoning instead of reason
+  reason?: string      // Optional - backend may send reasoning instead
+  reasoning?: string | null  // Backend may send reasoning instead of reason
 }
 
 interface PortfolioStatistics {
