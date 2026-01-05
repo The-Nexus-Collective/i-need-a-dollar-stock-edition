@@ -14,6 +14,7 @@ import {
 import { clsx } from 'clsx'
 
 import { Sidebar } from '@/components/Sidebar'
+import { MobileHeader } from '@/components/MobileHeader'
 import { useWebSocket } from '@/lib/websocket'
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -220,6 +221,7 @@ export default function StrategiesPage() {
   const [strategies, setStrategies] = useState<Strategy[]>([])
   const [loading, setLoading] = useState(true)
   const [marketRegime, setMarketRegime] = useState('normal')
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   
   const [accountData] = useState({
     balance: 100000,
@@ -259,8 +261,8 @@ export default function StrategiesPage() {
   if (loading) {
     return (
       <div className="flex min-h-screen">
-        <Sidebar isConnected={isConnected} />
-        <main className="flex-1 ml-[280px] p-8 flex items-center justify-center">
+        <Sidebar isConnected={isConnected} mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
+        <main className="flex-1 md:ml-[280px] p-8 flex items-center justify-center">
           <div className="text-center">
             <Zap className="w-12 h-12 mx-auto mb-4 text-pink-400 animate-pulse" />
             <p className="text-text-muted">Loading Strategy Ensemble...</p>
@@ -272,18 +274,30 @@ export default function StrategiesPage() {
   
   return (
     <div className="flex min-h-screen">
-      <Sidebar isConnected={isConnected} />
+      <Sidebar 
+        isConnected={isConnected} 
+        mobileOpen={mobileMenuOpen}
+        onMobileClose={() => setMobileMenuOpen(false)}
+      />
       
-      <main className="flex-1 ml-[280px] p-6 lg:p-8">
+      <main className="flex-1 md:ml-[280px] min-w-0">
+        {/* Mobile Header */}
+        <MobileHeader 
+          onMenuClick={() => setMobileMenuOpen(true)}
+          isConnected={isConnected}
+          title="Strategies"
+        />
+
+        <div className="p-4 md:p-6 lg:p-8">
         {/* Header */}
-        <header className="flex items-center justify-between mb-8">
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
           <div>
             <motion.h1 
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="text-2xl font-semibold text-text-primary tracking-tight flex items-center gap-3"
+              className="text-xl sm:text-2xl font-semibold text-text-primary tracking-tight flex items-center gap-3"
             >
-              <Zap className="w-7 h-7 text-pink-400" />
+              <Zap className="w-6 sm:w-7 h-6 sm:h-7 text-pink-400" />
               Strategy Ensemble
             </motion.h1>
             <p className="text-xs text-text-muted mt-1">
@@ -305,7 +319,7 @@ export default function StrategiesPage() {
         </header>
         
         {/* Summary Stats */}
-        <div className="grid grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -358,7 +372,7 @@ export default function StrategiesPage() {
         </div>
         
         {/* Strategy Grid */}
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
           {strategies.map((strategy, i) => (
             <motion.div
               key={strategy.strategy}
@@ -381,7 +395,7 @@ export default function StrategiesPage() {
           <h3 className="text-sm font-medium text-text-primary mb-4">
             How Meta-Learning Works
           </h3>
-          <div className="grid grid-cols-3 gap-6 text-sm text-text-secondary">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 text-sm text-text-secondary">
             <div>
               <div className="text-accent-cyan font-medium mb-1">1. Regime Detection</div>
               <p>The system identifies the current market regime (low vol, normal, high vol, euphoria, panic) based on volatility and sentiment metrics.</p>
@@ -396,6 +410,7 @@ export default function StrategiesPage() {
             </div>
           </div>
         </motion.div>
+        </div>
       </main>
     </div>
   )

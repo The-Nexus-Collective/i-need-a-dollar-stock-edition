@@ -498,9 +498,34 @@ body::before {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   RESPONSIVE
+   RESPONSIVE & MOBILE OPTIMIZATIONS
 ═══════════════════════════════════════════════════════════════════════════════ */
 
+/* Touch-friendly minimum sizes */
+@layer utilities {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Mobile scrollbar behavior */
+@media (max-width: 768px) {
+  /* Hide scrollbars on mobile for cleaner look, but keep scrolling */
+  ::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+  }
+  
+  /* Enable smooth momentum scrolling on iOS */
+  .overflow-y-auto,
+  .overflow-x-auto,
+  .overflow-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Responsive typography */
 @media (max-width: 768px) {
   .text-display {
     font-size: 2rem;
@@ -508,5 +533,78 @@ body::before {
   
   .text-headline {
     font-size: 1.5rem;
+  }
+  
+  .text-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.12em;
+  }
+  
+  /* Make glass cards slightly less rounded on mobile */
+  .glass-card {
+    border-radius: 12px;
+  }
+}
+
+/* Extra small screens */
+@media (max-width: 480px) {
+  .text-display {
+    font-size: 1.75rem;
+  }
+  
+  .text-headline {
+    font-size: 1.25rem;
+  }
+  
+  /* Tighter padding on very small screens */
+  .glass-card {
+    border-radius: 10px;
+  }
+}
+
+/* Prevent text selection on interactive elements for mobile */
+@media (pointer: coarse) {
+  button,
+  a,
+  .btn-primary,
+  .btn-ghost {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+}
+
+/* Improve button touch feedback */
+@layer components {
+  .btn-ghost:active {
+    background: rgba(0, 212, 255, 0.1);
+  }
+  
+  .btn-primary:active {
+    transform: translateY(0);
+  }
+}
+
+/* Extra small breakpoint helper class */
+@media (min-width: 480px) {
+  .xs\:inline {
+    display: inline;
+  }
+}
+
+@media (max-width: 479px) {
+  .xs\:inline {
+    display: none;
+  }
+}
+
+/* Safe area insets for notched devices */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 }

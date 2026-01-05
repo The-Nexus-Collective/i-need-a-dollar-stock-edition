@@ -31,6 +31,7 @@ import {
 import { clsx } from 'clsx'
 
 import { Sidebar } from '@/components/Sidebar'
+import { MobileHeader } from '@/components/MobileHeader'
 import { api } from '@/lib/api'
 import { useWebSocket } from '@/lib/websocket'
 
@@ -463,6 +464,7 @@ export default function HistoryPage() {
   const [expandedTxId, setExpandedTxId] = useState<string | null>(null)
   const [loadingLedger, setLoadingLedger] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const pageSize = 20
   
   const { isConnected } = useWebSocket({
@@ -594,16 +596,28 @@ export default function HistoryPage() {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar isConnected={isConnected} />
+      <Sidebar 
+        isConnected={isConnected} 
+        mobileOpen={mobileMenuOpen}
+        onMobileClose={() => setMobileMenuOpen(false)}
+      />
 
-      <main className="flex-1 ml-[280px] p-6 lg:p-8">
+      <main className="flex-1 md:ml-[280px] min-w-0">
+        {/* Mobile Header */}
+        <MobileHeader 
+          onMenuClick={() => setMobileMenuOpen(true)}
+          isConnected={isConnected}
+          title="History"
+        />
+
+        <div className="p-4 md:p-6 lg:p-8">
         {/* Header */}
-        <header className="flex items-center justify-between mb-8">
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
           <div>
             <motion.h1 
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="text-2xl font-semibold text-text-primary tracking-tight"
+              className="text-xl sm:text-2xl font-semibold text-text-primary tracking-tight"
             >
               Transaction History
             </motion.h1>
@@ -612,7 +626,7 @@ export default function HistoryPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             {/* Reconciliation Status */}
             {reconciliation && (
               <motion.div
@@ -630,20 +644,22 @@ export default function HistoryPage() {
                 ) : (
                   <AlertTriangle className="w-3.5 h-3.5" />
                 )}
-                {reconciliation.balanced ? 'Books Balanced' : 'Imbalance Detected'}
+                <span className="hidden sm:inline">
+                  {reconciliation.balanced ? 'Books Balanced' : 'Imbalance Detected'}
+                </span>
               </motion.div>
             )}
 
             <button
               onClick={fetchData}
-              className="btn-ghost p-2"
+              className="btn-ghost p-2 min-h-[44px] min-w-[44px] flex items-center justify-center"
               disabled={loading}
             >
               <RefreshCw className={clsx('w-4 h-4', loading && 'animate-spin')} />
             </button>
             <button 
               onClick={handleExport}
-              className="btn-ghost p-2 flex items-center gap-2"
+              className="btn-ghost p-2 min-h-[44px] min-w-[44px] flex items-center justify-center"
               disabled={exporting}
             >
               {exporting ? (
@@ -656,7 +672,7 @@ export default function HistoryPage() {
         </header>
 
         {/* Account Balance Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <BalanceCard
             icon={Wallet}
             label="Cash Balance"
@@ -692,7 +708,7 @@ export default function HistoryPage() {
         </div>
 
         {/* Transaction Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -896,6 +912,7 @@ export default function HistoryPage() {
             </div>
           )}
         </motion.div>
+        </div>
       </main>
     </div>
   )

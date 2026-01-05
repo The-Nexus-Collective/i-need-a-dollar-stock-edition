@@ -21,6 +21,7 @@ import {
 import { clsx } from 'clsx'
 
 import { Sidebar } from '@/components/Sidebar'
+import { MobileHeader } from '@/components/MobileHeader'
 import { api } from '@/lib/api'
 import { useWebSocket } from '@/lib/websocket'
 
@@ -68,6 +69,7 @@ export default function SettingsPage() {
   const [resetSuccess, setResetSuccess] = useState(false)
   const [resetError, setResetError] = useState<string | null>(null)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const { isConnected } = useWebSocket({ channel: 'all' })
 
@@ -138,15 +140,27 @@ export default function SettingsPage() {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar isConnected={isConnected} />
+      <Sidebar 
+        isConnected={isConnected} 
+        mobileOpen={mobileMenuOpen}
+        onMobileClose={() => setMobileMenuOpen(false)}
+      />
 
-      <main className="flex-1 ml-[280px] p-6 lg:p-8">
+      <main className="flex-1 md:ml-[280px] min-w-0">
+        {/* Mobile Header */}
+        <MobileHeader 
+          onMenuClick={() => setMobileMenuOpen(true)}
+          isConnected={isConnected}
+          title="Settings"
+        />
+
+        <div className="p-4 md:p-6 lg:p-8">
         {/* Header */}
-        <header className="mb-8">
+        <header className="mb-6">
           <motion.h1 
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="text-2xl font-semibold text-text-primary tracking-tight"
+            className="text-xl sm:text-2xl font-semibold text-text-primary tracking-tight"
           >
             System Configuration
           </motion.h1>
@@ -558,6 +572,7 @@ export default function SettingsPage() {
             </div>
           </div>
         </motion.div>
+        </div>
       </main>
     </div>
   )

@@ -36,6 +36,7 @@ import {
 import { clsx } from 'clsx'
 
 import { Sidebar } from '@/components/Sidebar'
+import { MobileHeader } from '@/components/MobileHeader'
 import { api } from '@/lib/api'
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -778,6 +779,9 @@ export default function Dashboard() {
   const wsRef = useRef<WebSocket | null>(null)
   const [triggeringCycle, setTriggeringCycle] = useState(false)
   
+  // Mobile sidebar state
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  
   // Live equity data from WebSocket
   const [liveEquity, setLiveEquity] = useState<LiveEquityData | null>(null)
   
@@ -990,11 +994,23 @@ export default function Dashboard() {
 
   return (
     <div className="flex min-h-screen bg-void">
-      <Sidebar isConnected={pmStatus?.running || wsConnected} />
+      <Sidebar 
+        isConnected={pmStatus?.running || wsConnected} 
+        mobileOpen={mobileMenuOpen}
+        onMobileClose={() => setMobileMenuOpen(false)}
+      />
 
-      <main className="flex-1 ml-[280px] p-6 lg:p-8">
-        {/* Header */}
-        <header className="flex items-center justify-between mb-6">
+      <main className="flex-1 md:ml-[280px] min-w-0">
+        {/* Mobile Header */}
+        <MobileHeader 
+          onMenuClick={() => setMobileMenuOpen(true)}
+          isConnected={wsConnected}
+          title="Portfolio Manager"
+        />
+
+        <div className="p-4 md:p-6 lg:p-8">
+        {/* Header - Desktop version */}
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
           <div>
             <motion.h1 
               initial={{ opacity: 0, x: -20 }}
@@ -1092,7 +1108,7 @@ export default function Dashboard() {
         )}
 
         {/* Hero Metrics */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1233,9 +1249,9 @@ export default function Dashboard() {
         </motion.div>
 
         {/* Main Grid: Positions + Activity */}
-        <div className="grid grid-cols-12 gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
           {/* Positions Panel */}
-          <div className="col-span-12 xl:col-span-8">
+          <div className="xl:col-span-8">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1283,7 +1299,7 @@ export default function Dashboard() {
           </div>
 
           {/* Activity Feed */}
-          <div className="col-span-12 xl:col-span-4 space-y-4">
+          <div className="xl:col-span-4 space-y-4">
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -1371,6 +1387,7 @@ export default function Dashboard() {
               </motion.div>
             )}
           </div>
+        </div>
         </div>
       </main>
     </div>

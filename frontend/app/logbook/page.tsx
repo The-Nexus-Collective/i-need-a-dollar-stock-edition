@@ -21,6 +21,7 @@ import { clsx } from 'clsx'
 import ReactMarkdown from 'react-markdown'
 
 import { Sidebar } from '@/components/Sidebar'
+import { MobileHeader } from '@/components/MobileHeader'
 import { useWebSocket } from '@/lib/websocket'
 
 // API URL
@@ -312,6 +313,7 @@ export default function LogbookPage() {
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [stats, setStats] = useState<{
     total_entries: number
     total_cycles: number
@@ -374,18 +376,30 @@ export default function LogbookPage() {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar isConnected={isConnected} />
+      <Sidebar 
+        isConnected={isConnected} 
+        mobileOpen={mobileMenuOpen}
+        onMobileClose={() => setMobileMenuOpen(false)}
+      />
 
-      <main className="flex-1 ml-[280px] p-6 lg:p-8">
+      <main className="flex-1 md:ml-[280px] min-w-0">
+        {/* Mobile Header */}
+        <MobileHeader 
+          onMenuClick={() => setMobileMenuOpen(true)}
+          isConnected={isConnected}
+          title="Logbook"
+        />
+
+        <div className="p-4 md:p-6 lg:p-8">
         {/* Header */}
-        <header className="flex items-center justify-between mb-8">
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
           <div>
             <motion.h1 
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="text-2xl font-semibold text-text-primary tracking-tight flex items-center gap-3"
+              className="text-xl sm:text-2xl font-semibold text-text-primary tracking-tight flex items-center gap-3"
             >
-              <BookOpen className="w-7 h-7 text-accent-cyan" />
+              <BookOpen className="w-6 sm:w-7 h-6 sm:h-7 text-accent-cyan" />
               Trading Logbook
             </motion.h1>
             <p className="text-xs text-text-muted mt-1">
@@ -395,14 +409,14 @@ export default function LogbookPage() {
 
           <button
             onClick={fetchEntries}
-            className="btn-ghost p-2"
+            className="btn-ghost p-2 min-h-[44px] min-w-[44px] flex items-center justify-center self-start sm:self-auto"
           >
             <RefreshCw className="w-4 h-4" />
           </button>
         </header>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -482,6 +496,7 @@ export default function LogbookPage() {
               </p>
             </div>
           )}
+        </div>
         </div>
       </main>
     </div>

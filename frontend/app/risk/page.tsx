@@ -20,6 +20,7 @@ import {
 import { clsx } from 'clsx'
 
 import { Sidebar } from '@/components/Sidebar'
+import { MobileHeader } from '@/components/MobileHeader'
 import { api } from '@/lib/api'
 import { useWebSocket } from '@/lib/websocket'
 
@@ -670,6 +671,7 @@ export default function RiskPage() {
   const [marginLoading, setMarginLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | 'unacknowledged' | 'critical' | 'high'>('all')
   const [marginHealth, setMarginHealth] = useState<MarginHealth | null>(null)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [portfolioData, setPortfolioData] = useState({
     var_95: null as number | null,
     max_drawdown: null as number | null,
@@ -847,16 +849,28 @@ export default function RiskPage() {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar isConnected={isConnected} />
+      <Sidebar 
+        isConnected={isConnected} 
+        mobileOpen={mobileMenuOpen}
+        onMobileClose={() => setMobileMenuOpen(false)}
+      />
 
-      <main className="flex-1 ml-[280px] p-6 lg:p-8">
+      <main className="flex-1 md:ml-[280px] min-w-0">
+        {/* Mobile Header */}
+        <MobileHeader 
+          onMenuClick={() => setMobileMenuOpen(true)}
+          isConnected={isConnected}
+          title="Risk Management"
+        />
+
+        <div className="p-4 md:p-6 lg:p-8">
         {/* Header */}
-        <header className="flex items-center justify-between mb-8">
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
           <div>
             <motion.h1 
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="text-2xl font-semibold text-text-primary tracking-tight"
+              className="text-xl sm:text-2xl font-semibold text-text-primary tracking-tight"
             >
               Risk Management
             </motion.h1>
@@ -876,7 +890,7 @@ export default function RiskPage() {
             )}
             <button
               onClick={fetchRiskEvents}
-              className="btn-ghost p-2"
+              className="btn-ghost p-2 min-h-[44px] min-w-[44px] flex items-center justify-center"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
@@ -948,6 +962,7 @@ export default function RiskPage() {
             </div>
           )}
         </motion.div>
+        </div>
       </main>
     </div>
   )

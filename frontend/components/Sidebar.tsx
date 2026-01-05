@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -17,12 +17,15 @@ import {
   Zap,
   AlertTriangle,
   BookOpen,
+  X,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { usePortfolio } from '@/lib/usePortfolio'
 
 interface SidebarProps {
   isConnected: boolean
+  mobileOpen?: boolean
+  onMobileClose?: () => void
 }
 
 const navItems = [
@@ -34,10 +37,30 @@ const navItems = [
   { icon: Settings, label: 'Settings', href: '/settings' },
 ]
 
-export function Sidebar({ isConnected }: SidebarProps) {
+export function Sidebar({ isConnected, mobileOpen = false, onMobileClose }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
-  const { portfolio, marginHealth } = usePortfolio(3000) // Faster refresh for sidebar
+  const { portfolio, marginHealth } = usePortfolio(3000)
   const pathname = usePathname()
+
+  // Close mobile sidebar on route change
+  useEffect(() => {
+    if (mobileOpen && onMobileClose) {
+      onMobileClose()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname])
+
+  // Prevent body scroll when mobile sidebar is open
+  useEffect(() => {
+    if (mobileOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [mobileOpen])
 
   const pnl = isNaN(portfolio?.totalPnl) ? 0 : (portfolio?.totalPnl ?? 0)
   const pnlPercent = isNaN(portfolio?.pnlPercent) ? 0 : (portfolio?.pnlPercent ?? 0)
@@ -48,7 +71,6 @@ export function Sidebar({ isConnected }: SidebarProps) {
   const totalSpread = isNaN(portfolio?.totalSpread) ? 0 : (portfolio?.totalSpread ?? 0)
   const totalSlippage = isNaN(portfolio?.totalSlippage) ? 0 : (portfolio?.totalSlippage ?? 0)
 
-  // Margin status display config
   const marginStatusConfig = {
     safe: {
       dotClass: 'bg-accent-emerald shadow-[0_0_8px_rgba(0,255,136,0.5)]',
@@ -77,21 +99,19 @@ export function Sidebar({ isConnected }: SidebarProps) {
   const atRiskCount = (marginHealth?.positions_warning ?? 0) + (marginHealth?.positions_danger ?? 0)
   const totalPositions = marginHealth?.total_positions ?? 0
 
-  return (
-    <motion.aside
-      initial={false}
-      animate={{ width: collapsed ? 72 : 280 }}
-      transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-      className="fixed left-0 top-0 h-screen glass-sidebar z-50 flex flex-col"
-    >
+  // Determine if we should show expanded content (not collapsed on desktop, always expanded on mobile)
+  const showExpanded = mobileOpen ? true : !collapsed
+
+  const sidebarContent = (
+    <>
       {/* Logo */}
       <div className="p-5 flex items-center justify-between border-b border-glass-border">
         <motion.div
           initial={false}
-          animate={{ opacity: collapsed ? 0 : 1, width: collapsed ? 0 : 'auto' }}
+          animate={{ opacity: showExpanded ? 1 : 0, width: showExpanded ? 'auto' : 0 }}
           className="flex items-center gap-3 overflow-hidden"
         >
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent-cyan to-accent-emerald flex items-center justify-center shadow-glow-cyan">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent-cyan to-accent-emerald flex items-center justify-center shadow-glow-cyan flex-shrink-0">
             <Zap className="w-5 h-5 text-void" />
           </div>
           <div>
@@ -103,12 +123,23 @@ export function Sidebar({ isConnected }: SidebarProps) {
           </div>
         </motion.div>
         
+        {/* Desktop collapse button - hidden on mobile */}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="p-2 rounded-lg hover:bg-glass-bg transition-colors text-text-muted hover:text-accent-cyan"
+          className="p-2 rounded-lg hover:bg-glass-bg transition-colors text-text-muted hover:text-accent-cyan hidden md:block"
         >
           {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
         </button>
+
+        {/* Mobile close button */}
+        {mobileOpen && (
+          <button
+            onClick={onMobileClose}
+            className="p-2 rounded-lg hover:bg-glass-bg transition-colors text-text-muted hover:text-accent-cyan md:hidden"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       {/* Status */}
@@ -117,7 +148,7 @@ export function Sidebar({ isConnected }: SidebarProps) {
         <div className="flex items-center gap-2 mb-3">
           <div className="w-2 h-2 rounded-full bg-accent-amber shadow-[0_0_8px_rgba(255,170,51,0.5)]" />
           <AnimatePresence mode="wait">
-            {!collapsed && (
+            {showExpanded && (
               <motion.span
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -131,14 +162,14 @@ export function Sidebar({ isConnected }: SidebarProps) {
         </div>
         
         {/* Margin health indicator */}
-        <Link href="/risk" className="block">
+        <Link href="/risk" className="block" onClick={onMobileClose}>
           <div className={clsx(
             'flex items-center gap-2 transition-opacity',
             totalPositions === 0 && 'opacity-50'
           )}>
             <div className={clsx('w-2 h-2 rounded-full', marginConfig.dotClass)} />
             <AnimatePresence mode="wait">
-              {!collapsed && (
+              {showExpanded && (
                 <motion.div
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -161,7 +192,7 @@ export function Sidebar({ isConnected }: SidebarProps) {
                 </motion.div>
               )}
             </AnimatePresence>
-            {collapsed && atRiskCount > 0 && (
+            {!showExpanded && atRiskCount > 0 && (
               <AlertTriangle className={clsx(
                 'w-3 h-3 absolute right-2',
                 marginStatus === 'warning' ? 'text-accent-amber' : 'text-accent-red'
@@ -172,7 +203,7 @@ export function Sidebar({ isConnected }: SidebarProps) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 py-4 px-3">
+      <nav className="flex-1 py-4 px-3 overflow-y-auto">
         <ul className="space-y-1">
           {navItems.map((item) => {
             const isActive = pathname === item.href
@@ -182,16 +213,17 @@ export function Sidebar({ isConnected }: SidebarProps) {
               <li key={item.href}>
                 <Link
                   href={item.href}
+                  onClick={onMobileClose}
                   className={clsx(
-                    'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200',
+                    'w-full flex items-center gap-3 px-3 py-3 md:py-2.5 rounded-xl transition-all duration-200 min-h-[44px]',
                     isActive
                       ? 'bg-accent-cyan/10 text-accent-cyan border-glow-cyan'
-                      : 'text-text-secondary hover:text-text-primary hover:bg-glass-bg'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-glass-bg active:bg-glass-bg'
                   )}
                 >
                   <Icon className={clsx('w-5 h-5 flex-shrink-0', isActive && 'drop-shadow-[0_0_8px_rgba(0,212,255,0.5)]')} />
                   <AnimatePresence mode="wait">
-                    {!collapsed && (
+                    {showExpanded && (
                       <motion.span
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
@@ -211,7 +243,7 @@ export function Sidebar({ isConnected }: SidebarProps) {
 
       {/* Account Summary */}
       <AnimatePresence mode="wait">
-        {!collapsed && (
+        {showExpanded && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -279,14 +311,56 @@ export function Sidebar({ isConnected }: SidebarProps) {
             'w-4 h-4',
             isConnected ? 'text-accent-emerald animate-pulse' : 'text-accent-red'
           )} />
-          {!collapsed && (
+          {showExpanded && (
             <span className="text-xs text-text-muted">
               {isConnected ? 'WebSocket Connected' : 'Disconnected'}
             </span>
           )}
         </div>
       </div>
-    </motion.aside>
+    </>
+  )
+
+  return (
+    <>
+      {/* Mobile backdrop overlay */}
+      <AnimatePresence>
+        {mobileOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
+            onClick={onMobileClose}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Desktop sidebar - always visible, hidden on mobile */}
+      <motion.aside
+        initial={false}
+        animate={{ width: collapsed ? 72 : 280 }}
+        transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+        className="fixed left-0 top-0 h-screen glass-sidebar z-50 flex-col hidden md:flex"
+      >
+        {sidebarContent}
+      </motion.aside>
+
+      {/* Mobile sidebar - slides in from left */}
+      <AnimatePresence>
+        {mobileOpen && (
+          <motion.aside
+            initial={{ x: '-100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '-100%' }}
+            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+            className="fixed left-0 top-0 h-screen w-[280px] glass-sidebar z-50 flex flex-col md:hidden"
+          >
+            {sidebarContent}
+          </motion.aside>
+        )}
+      </AnimatePresence>
+    </>
   )
 }
-

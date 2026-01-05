@@ -14,6 +14,7 @@ import {
 import { clsx } from 'clsx'
 
 import { Sidebar } from '@/components/Sidebar'
+import { MobileHeader } from '@/components/MobileHeader'
 import { api } from '@/lib/api'
 import { useWebSocket } from '@/lib/websocket'
 
@@ -72,6 +73,131 @@ function formatPercentage(value: number, showSign = false): string {
   return value < 0 ? `-${formatted}` : formatted
 }
 
+// Mobile-friendly position card component
+function PositionMobileCard({ position }: { position: Position }) {
+  const isLong = position.direction?.toUpperCase() === 'LONG'
+  const displaySide = isLong ? 'LONG' : 'SHORT'
+  const currentPrice = position.current_price || position.entry_price || 0
+  const isProfitable = (position.unrealized_pnl || 0) >= 0
+  const pnlPercent = position.pnl_percent || 0
+  const coin = position.symbol?.replace('USDT', '') || 'UNKNOWN'
+  const liquidationPrice = position.liquidation_price || 0
+  const distanceToLiq = liquidationPrice > 0 && currentPrice > 0
+    ? Math.abs((currentPrice - liquidationPrice) / currentPrice) * 100
+    : 0
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={clsx(
+        'glass-card p-4 border-l-4',
+        isProfitable ? 'border-l-accent-emerald' : 'border-l-accent-red'
+      )}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-3">
+          <div className={clsx(
+            'w-10 h-10 rounded-lg flex items-center justify-center',
+            isLong ? 'bg-accent-emerald/20' : 'bg-accent-red/20'
+          )}>
+            {isLong ? (
+              <TrendingUp className="w-5 h-5 text-accent-emerald" />
+            ) : (
+              <TrendingDown className="w-5 h-5 text-accent-red" />
+            )}
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-text-primary text-lg">{coin}</span>
+              <span className={clsx(
+                'text-xs px-2 py-0.5 rounded-full',
+                isLong ? 'bg-accent-emerald/20 text-accent-emerald' : 'bg-accent-red/20 text-accent-red'
+              )}>
+                {displaySide}
+              </span>
+              {position.leverage && (
+                <span className="text-xs text-accent-cyan">{position.leverage}x</span>
+              )}
+            </div>
+            <p className="text-xs text-text-muted flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {position.entry_time && !isNaN(new Date(position.entry_time).getTime()) 
+                ? new Date(position.entry_time).toLocaleString() 
+                : 'Unknown'}
+            </p>
+          </div>
+        </div>
+        
+        {/* P&L */}
+        <div className="text-right">
+          <div className={clsx(
+            'text-lg font-mono font-bold',
+            isProfitable ? 'text-accent-emerald' : 'text-accent-red'
+          )}>
+            {formatCurrency(position.unrealized_pnl || 0, true)}
+          </div>
+          <div className={clsx(
+            'text-xs font-mono',
+            isProfitable ? 'text-accent-emerald' : 'text-accent-red'
+          )}>
+            {formatPercentage(pnlPercent, true)}
+          </div>
+        </div>
+      </div>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <div>
+          <span className="text-xs text-text-muted block">Entry</span>
+          <span className="font-mono text-text-primary">{formatCurrency(position.entry_price)}</span>
+        </div>
+        <div>
+          <span className="text-xs text-text-muted block">Current</span>
+          <span className={clsx('font-mono', isProfitable ? 'text-accent-emerald' : 'text-accent-red')}>
+            {formatCurrency(currentPrice)}
+          </span>
+        </div>
+        <div>
+          <span className="text-xs text-text-muted block">Size</span>
+          <span className="font-mono text-text-primary">
+            {position.size_usdt ? formatCurrency(position.size_usdt) : formatCurrency((position.quantity || 0) * currentPrice)}
+          </span>
+        </div>
+        <div>
+          <span className="text-xs text-text-muted block">Conviction</span>
+          <span className={clsx(
+            'font-mono font-semibold',
+            position.conviction >= 70 ? 'text-accent-emerald' :
+            position.conviction >= 50 ? 'text-accent-amber' : 'text-text-muted'
+          )}>
+            {position.conviction}%
+          </span>
+        </div>
+      </div>
+
+      {/* Liquidation Warning */}
+      {liquidationPrice > 0 && (
+        <div className="mt-3 pt-3 border-t border-glass-border flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs">
+            <Shield className="w-4 h-4 text-accent-red" />
+            <span className="text-text-muted">Liquidation:</span>
+            <span className="font-mono text-text-primary">{formatCurrency(liquidationPrice)}</span>
+          </div>
+          <span className={clsx(
+            'text-xs font-mono',
+            distanceToLiq < 10 ? 'text-accent-red' : 
+            distanceToLiq < 20 ? 'text-accent-amber' : 'text-accent-emerald'
+          )}>
+            {distanceToLiq.toFixed(1)}% away
+          </span>
+        </div>
+      )}
+    </motion.div>
+  )
+}
+
 function PositionRow({ position }: { position: Position }) {
   // Handle direction from API
   const isLong = position.direction?.toUpperCase() === 'LONG'
@@ -79,7 +205,6 @@ function PositionRow({ position }: { position: Position }) {
   
   // Use current_price or fallback to entry_price
   const currentPrice = position.current_price || position.entry_price || 0
-  const entryPrice = position.entry_price || 0
   
   // Use unrealized PnL directly from PM
   const isProfitable = (position.unrealized_pnl || 0) >= 0
@@ -235,6 +360,7 @@ function PositionRow({ position }: { position: Position }) {
 export default function PositionsPage() {
   const [positions, setPositions] = useState<Position[]>([])
   const [loading, setLoading] = useState(true)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const { isConnected } = useWebSocket({
     channel: 'trading',
@@ -301,149 +427,185 @@ export default function PositionsPage() {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar isConnected={isConnected} />
+      <Sidebar 
+        isConnected={isConnected} 
+        mobileOpen={mobileMenuOpen}
+        onMobileClose={() => setMobileMenuOpen(false)}
+      />
 
-      <main className="flex-1 ml-[280px] p-6 lg:p-8">
-        {/* Header */}
-        <header className="flex items-center justify-between mb-8">
-          <div>
-            <motion.h1 
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="text-2xl font-semibold text-text-primary tracking-tight"
-            >
-              Open Positions
-            </motion.h1>
-            <p className="text-xs text-text-muted mt-1">
-              Current holdings • Updates every 5 seconds
-            </p>
-          </div>
+      <main className="flex-1 md:ml-[280px] min-w-0">
+        {/* Mobile Header */}
+        <MobileHeader 
+          onMenuClick={() => setMobileMenuOpen(true)}
+          isConnected={isConnected}
+          title="Positions"
+        />
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={fetchPositions}
-              className="btn-ghost p-2"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
-          </div>
-        </header>
-
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="glass-card p-5"
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <BarChart2 className="w-4 h-4 text-accent-cyan" />
-              <span className="text-label">Open Positions</span>
-            </div>
-            <div className="text-2xl font-mono font-semibold text-text-primary">
-              {positions.length}
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="glass-card p-5"
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <Target className="w-4 h-4 text-accent-amber" />
-              <span className="text-label">Leveraged Exposure</span>
-            </div>
-            <div className="text-2xl font-mono font-semibold text-accent-amber">
-              {formatCurrency(totalExposure)}
-            </div>
-            <p className="text-xs text-text-muted mt-1">current notional value</p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="glass-card p-5"
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <TrendingUp className="w-4 h-4 text-accent-emerald" />
-              <span className="text-label">Unrealized P&L</span>
-            </div>
-            <div className={clsx(
-              'text-2xl font-mono font-semibold',
-              totalUnrealizedPnl >= 0 ? 'text-accent-emerald' : 'text-accent-red'
-            )}>
-              {formatCurrency(totalUnrealizedPnl, true)}
-            </div>
-          </motion.div>
-        </div>
-
-
-        {/* Positions Table */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="glass-card overflow-hidden"
-        >
-          {loading ? (
-            <div className="p-12 text-center">
-              <div className="w-8 h-8 border-2 border-accent-cyan border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-              <p className="text-text-muted">Loading positions...</p>
-            </div>
-          ) : positions.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-glass-border bg-void/30">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                      Position
-                    </th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                      Quantity
-                    </th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                      Entry
-                    </th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                      Current
-                    </th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                      Liquidation
-                    </th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                      Conviction
-                    </th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                      P&L
-                    </th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {positions.map((position) => (
-                    <PositionRow key={position.id} position={position} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="p-12 text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-void/50 flex items-center justify-center">
-                <BarChart2 className="w-8 h-8 text-text-dim" />
-              </div>
-              <p className="text-text-muted font-medium mb-1">Keine Positionen</p>
-              <p className="text-text-dim text-sm">
-                Keine offenen Positionen vorhanden.
+        <div className="p-4 md:p-6 lg:p-8">
+          {/* Header */}
+          <header className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+            <div>
+              <motion.h1 
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="text-xl sm:text-2xl font-semibold text-text-primary tracking-tight"
+              >
+                Open Positions
+              </motion.h1>
+              <p className="text-xs text-text-muted mt-1">
+                Current holdings • Updates every 5 seconds
               </p>
             </div>
-          )}
-        </motion.div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={fetchPositions}
+                className="btn-ghost p-2 min-h-[44px] min-w-[44px] flex items-center justify-center"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            </div>
+          </header>
+
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="glass-card p-4 sm:p-5"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <BarChart2 className="w-4 h-4 text-accent-cyan" />
+                <span className="text-label">Open Positions</span>
+              </div>
+              <div className="text-xl sm:text-2xl font-mono font-semibold text-text-primary">
+                {positions.length}
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="glass-card p-4 sm:p-5"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <Target className="w-4 h-4 text-accent-amber" />
+                <span className="text-label">Leveraged Exposure</span>
+              </div>
+              <div className="text-xl sm:text-2xl font-mono font-semibold text-accent-amber">
+                {formatCurrency(totalExposure)}
+              </div>
+              <p className="text-xs text-text-muted mt-1">current notional value</p>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="glass-card p-4 sm:p-5"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <TrendingUp className="w-4 h-4 text-accent-emerald" />
+                <span className="text-label">Unrealized P&L</span>
+              </div>
+              <div className={clsx(
+                'text-xl sm:text-2xl font-mono font-semibold',
+                totalUnrealizedPnl >= 0 ? 'text-accent-emerald' : 'text-accent-red'
+              )}>
+                {formatCurrency(totalUnrealizedPnl, true)}
+              </div>
+            </motion.div>
+          </div>
+
+
+          {/* Positions - Mobile Card View */}
+          <div className="md:hidden space-y-3">
+            {loading ? (
+              <div className="glass-card p-12 text-center">
+                <div className="w-8 h-8 border-2 border-accent-cyan border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                <p className="text-text-muted">Loading positions...</p>
+              </div>
+            ) : positions.length > 0 ? (
+              positions.map((position) => (
+                <PositionMobileCard key={position.id} position={position} />
+              ))
+            ) : (
+              <div className="glass-card p-12 text-center">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-void/50 flex items-center justify-center">
+                  <BarChart2 className="w-8 h-8 text-text-dim" />
+                </div>
+                <p className="text-text-muted font-medium mb-1">No Positions</p>
+                <p className="text-text-dim text-sm">
+                  No open positions available.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Positions Table - Desktop Only */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="glass-card overflow-hidden hidden md:block"
+          >
+            {loading ? (
+              <div className="p-12 text-center">
+                <div className="w-8 h-8 border-2 border-accent-cyan border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                <p className="text-text-muted">Loading positions...</p>
+              </div>
+            ) : positions.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-glass-border bg-void/30">
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
+                        Position
+                      </th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
+                        Quantity
+                      </th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
+                        Entry
+                      </th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
+                        Current
+                      </th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
+                        Liquidation
+                      </th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
+                        Conviction
+                      </th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
+                        P&L
+                      </th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-text-muted uppercase tracking-wider">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {positions.map((position) => (
+                      <PositionRow key={position.id} position={position} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="p-12 text-center">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-void/50 flex items-center justify-center">
+                  <BarChart2 className="w-8 h-8 text-text-dim" />
+                </div>
+                <p className="text-text-muted font-medium mb-1">No Positions</p>
+                <p className="text-text-dim text-sm">
+                  No open positions available.
+                </p>
+              </div>
+            )}
+          </motion.div>
+        </div>
       </main>
     </div>
   )
 }
-

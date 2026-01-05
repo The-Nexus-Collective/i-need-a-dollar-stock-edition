@@ -17,6 +17,7 @@ import {
 import { clsx } from 'clsx'
 
 import { Sidebar } from '@/components/Sidebar'
+import { MobileHeader } from '@/components/MobileHeader'
 import { useWebSocket } from '@/lib/websocket'
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -197,6 +198,7 @@ export default function UniversePage() {
   const [discoveries, setDiscoveries] = useState<XDiscovery[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   
   const [accountData] = useState({
     balance: 100000,
@@ -245,8 +247,8 @@ export default function UniversePage() {
   if (loading) {
     return (
       <div className="flex min-h-screen">
-        <Sidebar isConnected={isConnected} />
-        <main className="flex-1 ml-[280px] p-8 flex items-center justify-center">
+        <Sidebar isConnected={isConnected} mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
+        <main className="flex-1 md:ml-[280px] p-8 flex items-center justify-center">
           <div className="text-center">
             <Globe className="w-12 h-12 mx-auto mb-4 text-cyan-400 animate-spin" />
             <p className="text-text-muted">Loading Dynamic Universe...</p>
@@ -258,18 +260,30 @@ export default function UniversePage() {
   
   return (
     <div className="flex min-h-screen">
-      <Sidebar isConnected={isConnected} />
+      <Sidebar 
+        isConnected={isConnected} 
+        mobileOpen={mobileMenuOpen}
+        onMobileClose={() => setMobileMenuOpen(false)}
+      />
       
-      <main className="flex-1 ml-[280px] p-6 lg:p-8">
+      <main className="flex-1 md:ml-[280px] min-w-0">
+        {/* Mobile Header */}
+        <MobileHeader 
+          onMenuClick={() => setMobileMenuOpen(true)}
+          isConnected={isConnected}
+          title="Universe"
+        />
+
+        <div className="p-4 md:p-6 lg:p-8">
         {/* Header */}
-        <header className="flex items-center justify-between mb-8">
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
           <div>
             <motion.h1 
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="text-2xl font-semibold text-text-primary tracking-tight flex items-center gap-3"
+              className="text-xl sm:text-2xl font-semibold text-text-primary tracking-tight flex items-center gap-3"
             >
-              <Globe className="w-7 h-7 text-cyan-400" />
+              <Globe className="w-6 sm:w-7 h-6 sm:h-7 text-cyan-400" />
               Dynamic Universe
             </motion.h1>
             <p className="text-xs text-text-muted mt-1">
@@ -278,21 +292,21 @@ export default function UniversePage() {
           </div>
           
           {/* Search */}
-          <div className="relative">
+          <div className="relative w-full sm:w-auto">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
             <input
               type="text"
               placeholder="Search coins..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 pr-4 py-2 bg-surface-2 border border-white/10 rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:border-accent-cyan/50 focus:outline-none"
+              className="w-full sm:w-auto pl-10 pr-4 py-2 bg-surface-2 border border-white/10 rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:border-accent-cyan/50 focus:outline-none min-h-[44px]"
             />
           </div>
         </header>
         
         {/* Stats */}
         {stats && (
-          <div className="grid grid-cols-5 gap-4 mb-8">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -369,15 +383,15 @@ export default function UniversePage() {
           </div>
         )}
         
-        <div className="grid grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 md:gap-6">
           {/* Left - Coin Grid */}
-          <div className="col-span-8">
-            <div className="glass-card p-6">
+          <div className="xl:col-span-8">
+            <div className="glass-card p-4 md:p-6">
               <h3 className="text-sm font-medium text-text-primary mb-4">
                 Tradable Universe ({filteredUniverse.length} coins)
               </h3>
               
-              <div className="grid grid-cols-3 gap-4 max-h-[600px] overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4 max-h-[600px] overflow-y-auto">
                 {filteredUniverse.map((coin, i) => (
                   <motion.div
                     key={coin.coin}
@@ -393,8 +407,8 @@ export default function UniversePage() {
           </div>
           
           {/* Right - X Discoveries */}
-          <div className="col-span-4">
-            <div className="glass-card p-6">
+          <div className="xl:col-span-4">
+            <div className="glass-card p-4 md:p-6">
               <h3 className="text-sm font-medium text-text-primary mb-4 flex items-center gap-2">
                 <Twitter className="w-4 h-4 text-blue-400" />
                 X Discoveries
@@ -414,6 +428,7 @@ export default function UniversePage() {
               </div>
             </div>
           </div>
+        </div>
         </div>
       </main>
     </div>

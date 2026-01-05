@@ -1,4 +1,5 @@
 export { Sidebar } from './Sidebar'
+export { MobileHeader } from './MobileHeader'
 export { EquityChart } from './EquityChart'
 export { SentimentBarometer, SentimentGauge } from './SentimentBarometer'
 export { PositionCard, PositionsList } from './PositionCard'
