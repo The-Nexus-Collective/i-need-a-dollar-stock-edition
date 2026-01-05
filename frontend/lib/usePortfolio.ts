@@ -148,7 +148,9 @@ export function usePortfolio(refreshInterval = 5000) {
   useEffect(() => {
     const connectWebSocket = () => {
       try {
-        const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws/equity'
+        // Build WebSocket URL - append /equity to base URL if needed
+        const wsBase = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws'
+        const wsUrl = wsBase.endsWith('/equity') ? wsBase : `${wsBase}/equity`
         const ws = new WebSocket(wsUrl)
         wsRef.current = ws
         
