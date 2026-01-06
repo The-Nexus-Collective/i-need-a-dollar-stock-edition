@@ -74,12 +74,8 @@ public class PortfolioManagerService {
     @Autowired(required = false)
     private MidTradeReflectionRepository midTradeReflectionRepository;
 
-    @Value("${trading.position.size-percent:0.02}")
-    private BigDecimal positionSizePercent;
-
-    @Value("${trading.position.max-positions:50}")
-    private int maxPositions;
-
+    // Position sizing and count are determined dynamically by Grok AI
+    
     @Value("${trading.deployment.min-ratio:0.75}")
     private BigDecimal minDeploymentRatio;
 
@@ -126,10 +122,9 @@ public class PortfolioManagerService {
             // 1. Get current state
             TraderState state = traderStateRepository.getOrCreateMain();
             List<PositionDTO> openPositions = positionService.getOpenPositions();
-            int availableSlots = maxPositions - openPositions.size();
 
-            log.info("Current state: {} open positions, {} available slots, capital: {}",
-                    openPositions.size(), availableSlots, state.getCurrentCapital());
+            log.info("Current state: {} open positions, capital: {}",
+                    openPositions.size(), state.getCurrentCapital());
 
             resultBuilder.openPositionsBefore(openPositions.size())
                     .availableCapital(state.getCurrentCapital());
@@ -169,9 +164,9 @@ public class PortfolioManagerService {
             String deploymentInfo = buildDeploymentInfo(state, openPositions);
 
             // 3. Get AI analysis (including Pre-Mortem health context)
+            // Grok decides how many positions to open based on market conditions
             AnalysisResult analysis = grokService.analyze(
                     positionsContext + healthContext,
-                    availableSlots,
                     deploymentInfo,
                     state.getCurrentCapital()
             );
@@ -203,8 +198,8 @@ public class PortfolioManagerService {
             processPositionDecisions(analysis, state, closedPositions, keptPositions, extendedPositions, reducedPositions);
             resultBuilder.positionsClosed(closedPositions.size());
 
-            // 4b. Open new positions
-            processNewOpportunities(analysis, state, availableSlots + closedPositions.size(), openedPositions);
+            // 4b. Open new positions (Grok decides how many)
+            processNewOpportunities(analysis, state, openedPositions);
             resultBuilder.positionsOpened(openedPositions.size());
 
             // 5. Update state
@@ -309,17 +304,13 @@ public class PortfolioManagerService {
     /**
      * Process new opportunities from Grok analysis.
      * Opens new positions for high-conviction trades.
+     * Grok decides how many positions to open - no artificial limits.
      * Populates openedPositions list for logbook tracking.
      */
     private void processNewOpportunities(AnalysisResult analysis, TraderState state, 
-                                         int availableSlots, List<OpenedPositionInfo> openedPositions) {
+                                         List<OpenedPositionInfo> openedPositions) {
 
         for (NewOpportunity opportunity : analysis.getOpportunitiesByConviction()) {
-            if (availableSlots <= 0) {
-                log.info("No more slots available, skipping remaining opportunities");
-                break;
-            }
-
             if (!opportunity.meetsConvictionThreshold(minConvictionThreshold)) {
                 log.debug("Skipping {} - conviction {} below threshold {}",
                         opportunity.getSymbol(), opportunity.getConviction(), minConvictionThreshold);
@@ -333,7 +324,6 @@ public class PortfolioManagerService {
             OpenedPositionInfo info = openNewPosition(opportunity, state);
             if (info != null) {
                 openedPositions.add(info);
-                availableSlots--;
             }
         }
     }
@@ -694,6 +684,7 @@ public class PortfolioManagerService {
 
     /**
      * Build deployment info string for Grok context.
+     * Grok decides how many positions to hold - no artificial limits.
      */
     private String buildDeploymentInfo(TraderState state, List<PositionDTO> positions) {
         BigDecimal positionsValue = positions.stream()
@@ -707,21 +698,20 @@ public class PortfolioManagerService {
 
         String status;
         if (deploymentRatio.compareTo(minDeploymentRatio) < 0) {
-            status = "⚠️ BELOW TARGET - Open more positions!";
+            status = "⚠️ BELOW TARGET - Consider opening more positions";
         } else if (deploymentRatio.compareTo(maxDeploymentRatio) > 0) {
-            status = "⚠️ OVER LIMIT - No new positions!";
+            status = "⚠️ HIGHLY DEPLOYED - Be selective with new positions";
         } else {
             status = "✅ In target range";
         }
 
-        return String.format("DEPLOYMENT: %.1f%% (Target: %.0f%%-%.0f%%) %s\nAvailable capital: %s USD\nOpen slots: %d/%d",
+        return String.format("DEPLOYMENT: %.1f%% (Target: %.0f%%-%.0f%%) %s\nAvailable capital: %s USD\nOpen positions: %d",
                 deploymentRatio.multiply(BigDecimal.valueOf(100)),
                 minDeploymentRatio.multiply(BigDecimal.valueOf(100)),
                 maxDeploymentRatio.multiply(BigDecimal.valueOf(100)),
                 status,
                 state.getCurrentCapital(),
-                maxPositions - positions.size(),
-                maxPositions);
+                positions.size());
     }
 
     /**
@@ -777,10 +767,6 @@ public class PortfolioManagerService {
 
     public int getCurrentCycleNumber() {
         return cycleNumber.get();
-    }
-
-    public int getMaxPositions() {
-        return maxPositions;
     }
 
     /**

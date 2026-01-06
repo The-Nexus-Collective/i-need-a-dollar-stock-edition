@@ -49,10 +49,9 @@ services:
       # Cycle Configuration
       - CYCLE_INTERVAL=${CYCLE_INTERVAL:-600000}
       - STARTING_CAPITAL=${STARTING_CAPITAL:-1000000}
-      - POSITION_SIZE_PCT=${POSITION_SIZE_PCT:-0.02}
-      - MAX_POSITIONS=${MAX_POSITIONS:-50}
+      # Position sizing and count are determined dynamically by Grok AI
       - MIN_DEPLOYMENT_RATIO=${MIN_DEPLOYMENT_RATIO:-0.75}
-      - MAX_DEPLOYMENT_RATIO=${MAX_DEPLOYMENT_RATIO:-0.90}
+      - MAX_DEPLOYMENT_RATIO=${MAX_DEPLOYMENT_RATIO:-1.00}
       # Server
       - API_PORT=8081
       - CORS_ALLOW_ALL=true

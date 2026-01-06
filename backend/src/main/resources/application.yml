@@ -39,12 +39,10 @@ trading:
   mode: ${MODE:paper}
   cycle:
     interval: ${CYCLE_INTERVAL:600000}  # 10 minutes in milliseconds
-  position:
-    size-percent: ${POSITION_SIZE_PCT:0.02}
-    max-positions: ${MAX_POSITIONS:50}
+  # Position sizing and count are determined dynamically by Grok AI
   deployment:
     min-ratio: ${MIN_DEPLOYMENT_RATIO:0.75}
-    max-ratio: ${MAX_DEPLOYMENT_RATIO:0.90}
+    max-ratio: ${MAX_DEPLOYMENT_RATIO:1.00}
   capital:
     starting: ${STARTING_CAPITAL:1000000}
 

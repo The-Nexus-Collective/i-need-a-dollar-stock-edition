@@ -38,9 +38,6 @@ public class PortfolioController {
     @Value("${trading.capital.starting:0}")
     private BigDecimal startingCapital;
 
-    @Value("${trading.position.max-positions:50}")
-    private int maxPositions;
-
     @Value("${trading.deployment.min-ratio:0.75}")
     private BigDecimal minDeploymentRatio;
 
@@ -102,8 +99,7 @@ public class PortfolioController {
         statistics.put("realized_pnl", portfolio.getRealizedPnl());
         statistics.put("total_pnl", portfolio.getTotalPnl());
         statistics.put("open_positions", portfolio.getOpenPositions());
-        statistics.put("max_positions", maxPositions);
-        statistics.put("available_slots", maxPositions - portfolio.getOpenPositions());
+        // Position count is determined dynamically by Grok AI - no artificial limits
         statistics.put("total_trades", portfolio.getTotalTrades());
         statistics.put("winning_trades", portfolio.getWinningTrades());
         statistics.put("losing_trades", portfolio.getLosingTrades());

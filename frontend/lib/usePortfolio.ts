@@ -109,9 +109,23 @@ export function usePortfolio(refreshInterval = 5000) {
   useEffect(() => {
     const connectWebSocket = () => {
       try {
-        // Build WebSocket URL - append /equity to base URL if needed
-        const wsBase = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8081/ws'
-        const wsUrl = wsBase.endsWith('/equity') ? wsBase : `${wsBase}/equity`
+        // Build WebSocket URL for equity updates
+        let wsUrl: string
+        
+        if (process.env.NEXT_PUBLIC_WS_URL) {
+          // Explicit WebSocket URL configured
+          const wsBase = process.env.NEXT_PUBLIC_WS_URL
+          wsUrl = wsBase.endsWith('/equity') ? wsBase : `${wsBase}/equity`
+        } else if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
+          // Production: use relative path (relies on Next.js rewrites or platform routing)
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+          wsUrl = `${protocol}//${window.location.host}/ws/equity`
+        } else {
+          // Development: connect directly to backend
+          wsUrl = 'ws://localhost:8081/ws/equity'
+        }
+        
+        console.log('Connecting to WebSocket:', wsUrl)
         const ws = new WebSocket(wsUrl)
         wsRef.current = ws
         
@@ -147,12 +161,18 @@ export function usePortfolio(refreshInterval = 5000) {
           }
         }
         
-        ws.onclose = () => {
+        ws.onopen = () => {
+          console.log('Equity WebSocket connected')
+        }
+        
+        ws.onclose = (event) => {
+          console.log('Equity WebSocket disconnected', event.code, event.reason)
           // Reconnect after 3 seconds
           setTimeout(connectWebSocket, 3000)
         }
         
-        ws.onerror = () => {
+        ws.onerror = (error) => {
+          console.error('Equity WebSocket error:', error)
           ws.close()
         }
       } catch (e) {

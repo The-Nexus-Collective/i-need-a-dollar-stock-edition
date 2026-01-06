@@ -78,16 +78,17 @@ public class GrokService {
 
     /**
      * Run comprehensive portfolio analysis with automatic retry on empty results.
+     * Grok decides how many positions to open based on market conditions - no artificial limits.
      */
-    public AnalysisResult analyze(String positionsContext, int availableSlots, 
+    public AnalysisResult analyze(String positionsContext, 
                                    String deploymentInfo, BigDecimal availableCapital) {
-        return analyzeWithRetry(positionsContext, availableSlots, deploymentInfo, availableCapital, 1);
+        return analyzeWithRetry(positionsContext, deploymentInfo, availableCapital, 1);
     }
 
-    private AnalysisResult analyzeWithRetry(String positionsContext, int availableSlots,
+    private AnalysisResult analyzeWithRetry(String positionsContext,
                                             String deploymentInfo, BigDecimal availableCapital, int attempt) {
         
-        String prompt = buildPrompt(positionsContext, availableSlots, deploymentInfo);
+        String prompt = buildPrompt(positionsContext, deploymentInfo);
         String systemPrompt = getSystemPrompt();
         String fullPrompt = "[SYSTEM]\n" + systemPrompt + "\n\n[USER]\n" + prompt;
 
@@ -137,7 +138,7 @@ public class GrokService {
                     Thread.currentThread().interrupt();
                 }
                 
-                return analyzeWithRetry(positionsContext, availableSlots, deploymentInfo, availableCapital, attempt + 1);
+                return analyzeWithRetry(positionsContext, deploymentInfo, availableCapital, attempt + 1);
             }
 
             return result;
@@ -179,7 +180,7 @@ public class GrokService {
             Always output valid JSON as specified in the prompt.""";
     }
 
-    private String buildPrompt(String positionsContext, int availableSlots, String deploymentInfo) {
+    private String buildPrompt(String positionsContext, String deploymentInfo) {
         String timestamp = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'")
                 .withZone(ZoneOffset.UTC)
                 .format(Instant.now());
@@ -244,14 +245,13 @@ public class GrokService {
             TASK 3: NEW OPPORTUNITIES - AGGRESSIVE 100%%+ ANNUAL RETURN TARGET
             ═══════════════════════════════════════════════════════════════════
             
-            Available slots for new positions: %d
-            
-            AGGRESSIVE STRATEGY - NO FIXED POSITION SIZE LIMITS:
-            1. YOU decide position_size_percent (1-100%% of available capital)
-            2. High-conviction (80+) trades: Size aggressively, up to 50-100%%
-            3. Medium-conviction (60-79) trades: Size moderately, 10-30%%
-            4. LONG only (no short selling)
-            5. Only stocks from our Tech/Defense universe
+            AGGRESSIVE STRATEGY - YOU DECIDE EVERYTHING:
+            1. YOU decide how many positions to open (no artificial limits)
+            2. YOU decide position_size_percent (1-100%% of available capital)
+            3. High-conviction (80+) trades: Size aggressively, up to 50-100%%
+            4. Medium-conviction (60-79) trades: Size moderately, 10-30%%
+            5. LONG only (no short selling)
+            6. Only stocks from our Tech/Defense universe
             
             TARGET: 100%%+ annual return - be aggressive with high-conviction opportunities!
             
@@ -340,7 +340,7 @@ public class GrokService {
             ═══════════════════════════════════════════════════════════════════
             ANALYZE NOW - OUTPUT JSON ONLY
             ═══════════════════════════════════════════════════════════════════
-            """, timestamp, marketStatus, positionsContext, deploymentInfo, availableSlots);
+            """, timestamp, marketStatus, positionsContext, deploymentInfo);
     }
 
     private AnalysisResult parseResponse(String response, String rawPrompt) {

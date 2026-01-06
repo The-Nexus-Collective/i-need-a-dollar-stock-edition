@@ -1,0 +1,162 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Combined Single-Container Deployment
+# 
+# This Dockerfile packages both frontend and backend into a single container
+# with nginx as a reverse proxy. This ensures WebSocket connections work
+# properly on platforms like DigitalOcean App Platform.
+#
+# Build: docker build -f Dockerfile.combined -t inad-stocks .
+# Run:   docker run -p 8080:80 -e DATABASE_URL=... inad-stocks
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage 1: Build Backend (Spring Boot)
+# ═══════════════════════════════════════════════════════════════════════════
+FROM eclipse-temurin:21-jdk-alpine AS backend-build
+
+WORKDIR /app/backend
+COPY backend/ ./
+
+RUN ./gradlew build -x test --no-daemon
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage 2: Build Frontend (Next.js)
+# ═══════════════════════════════════════════════════════════════════════════
+FROM node:20-alpine AS frontend-build
+
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+
+COPY frontend/ ./
+
+# Build with empty URLs - we'll use relative paths
+ENV NEXT_PUBLIC_API_URL=""
+ENV NEXT_PUBLIC_WS_URL=""
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN npm run build
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Stage 3: Production Runtime with nginx
+# ═══════════════════════════════════════════════════════════════════════════
+FROM eclipse-temurin:21-jre-alpine
+
+# Install nginx and Node.js for running the frontend
+RUN apk add --no-cache nginx nodejs npm supervisor
+
+WORKDIR /app
+
+# Copy backend JAR
+COPY --from=backend-build /app/backend/build/libs/*.jar ./backend.jar
+
+# Copy frontend standalone build
+COPY --from=frontend-build /app/frontend/.next/standalone ./frontend/
+COPY --from=frontend-build /app/frontend/.next/static ./frontend/.next/static
+COPY --from=frontend-build /app/frontend/public ./frontend/public
+
+# Create nginx configuration for proxying
+RUN mkdir -p /etc/nginx/http.d
+COPY <<'EOF' /etc/nginx/http.d/default.conf
+# DigitalOcean App Platform uses port 8080 by default
+server {
+    listen 8080;
+    server_name _;
+
+    # WebSocket connections - proxy to backend
+    location /ws {
+        proxy_pass http://127.0.0.1:8081;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
+        proxy_send_timeout 86400;
+    }
+
+    # API calls - proxy to backend
+    location /api {
+        proxy_pass http://127.0.0.1:8081;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Health check - proxy to backend
+    location /health {
+        proxy_pass http://127.0.0.1:8081;
+        proxy_set_header Host $host;
+    }
+
+    # Actuator - proxy to backend
+    location /actuator {
+        proxy_pass http://127.0.0.1:8081;
+        proxy_set_header Host $host;
+    }
+
+    # Everything else - serve from frontend
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+
+# Create supervisord configuration to run all services
+COPY <<'EOF' /etc/supervisord.conf
+[supervisord]
+nodaemon=true
+user=root
+logfile=/var/log/supervisord.log
+pidfile=/var/run/supervisord.pid
+
+[program:nginx]
+command=nginx -g "daemon off;"
+autostart=true
+autorestart=true
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+
+[program:backend]
+command=java -jar /app/backend.jar
+directory=/app
+autostart=true
+autorestart=true
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+environment=SPRING_PROFILES_ACTIVE="docker",API_PORT="8081",CORS_ALLOW_ALL="true"
+
+[program:frontend]
+command=node /app/frontend/server.js
+directory=/app/frontend
+autostart=true
+autorestart=true
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+environment=NODE_ENV="production",PORT="3000",HOSTNAME="127.0.0.1"
+EOF
+
+# Expose the nginx port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget -q --spider http://127.0.0.1:8080/health || exit 1
+
+# Start all services with supervisor
+CMD ["supervisord", "-c", "/etc/supervisord.conf"]
+
