@@ -32,7 +32,7 @@ public class PortfolioService {
     private final AccountingService accountingService;
     private final LogbookService logbookService;
 
-    @Value("${trading.starting-capital:100000}")
+    @Value("${trading.capital.starting:0}")
     private BigDecimal defaultStartingCapital;
 
     /**

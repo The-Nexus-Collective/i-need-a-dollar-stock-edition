@@ -324,7 +324,7 @@ export default function SettingsPage() {
                     <span className="text-sm text-text-secondary">Starting Capital</span>
                   </div>
                   <span className="text-sm font-mono text-text-primary">
-                    ${(pmStatus?.portfolio?.statistics?.starting_capital || 100000).toLocaleString()}
+                    ${(pmStatus?.portfolio?.statistics?.starting_capital || 0).toLocaleString()}
                   </span>
                 </div>
 
@@ -485,7 +485,7 @@ export default function SettingsPage() {
                 </h3>
                 <p className="text-xs text-text-muted mt-1">
                   Delete all paper trades, positions, and trading history. 
-                  The system will restart with initial capital of $100,000 USD.
+                  The system will restart with initial capital of $1,000,000 USD.
                   This action cannot be undone.
                 </p>
                 

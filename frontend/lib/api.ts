@@ -286,6 +286,37 @@ class ApiClient {
     }>('/api/accounting/health')
   }
 
+  // Get full accounting breakdown for debugging
+  async getAccountingBreakdown() {
+    return this.fetch<{
+      startingCapital: number
+      cashBalance: number
+      positionsValue: number
+      realizedPnl: number
+      costBreakdown: {
+        totalTradingCosts: number
+        fees: number
+        spread: number
+        slippage: number
+      }
+      bookEquity: number
+      expectedEquity: number
+      equityDiscrepancy: number
+      accountBalances: Record<string, number>
+      reconciliation: {
+        balanced: boolean
+        totalDebits: number
+        totalCredits: number
+        imbalance: number
+        discrepancies: string[]
+      }
+      totalLedgerEntries: number
+      totalTransactions: number
+      initialized: boolean
+      timestamp: string
+    }>('/api/accounting/breakdown')
+  }
+
   // Signals
   async getSignals(limit = 100) {
     return this.fetch<Array<{

@@ -46,7 +46,7 @@ trading:
     min-ratio: ${MIN_DEPLOYMENT_RATIO:0.75}
     max-ratio: ${MAX_DEPLOYMENT_RATIO:0.90}
   capital:
-    starting: ${STARTING_CAPITAL:100000}
+    starting: ${STARTING_CAPITAL:1000000}
 
 # Stock Universe Configuration
 stocks:

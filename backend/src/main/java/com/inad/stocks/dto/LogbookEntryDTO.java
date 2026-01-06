@@ -75,7 +75,6 @@ public class LogbookEntryDTO {
         String direction;
         String reason;
         int conviction;
-        int leverage;
         BigDecimal price;
         BigDecimal size;
         BigDecimal pnl;

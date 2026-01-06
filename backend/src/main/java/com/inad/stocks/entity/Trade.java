@@ -46,10 +46,6 @@ public class Trade {
 
     @Column(name = "size_usd", nullable = false, precision = 20, scale = 2)
     private BigDecimal sizeUsd;
-    
-    @Column
-    @Builder.Default
-    private Integer leverage = 1;
 
     @Column(name = "pnl_usd", nullable = false, precision = 20, scale = 2)
     private BigDecimal pnlUsd;

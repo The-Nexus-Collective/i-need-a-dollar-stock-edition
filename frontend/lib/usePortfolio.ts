@@ -25,15 +25,7 @@ export interface PortfolioData {
   maxDrawdown: number
 }
 
-export interface MarginHealthData {
-  overall_status: 'safe' | 'warning' | 'danger' | 'critical'
-  total_positions: number
-  positions_safe: number
-  positions_warning: number
-  positions_danger: number
-}
-
-const INITIAL_CAPITAL = 100000
+const INITIAL_CAPITAL = 0
 
 const DEFAULT_PORTFOLIO: PortfolioData = {
   totalEquity: INITIAL_CAPITAL,
@@ -57,21 +49,12 @@ const DEFAULT_PORTFOLIO: PortfolioData = {
   maxDrawdown: 0,
 }
 
-const DEFAULT_MARGIN_HEALTH: MarginHealthData = {
-  overall_status: 'safe',
-  total_positions: 0,
-  positions_safe: 0,
-  positions_warning: 0,
-  positions_danger: 0,
-}
-
 /**
  * Hook to fetch and cache portfolio data from the Portfolio Manager.
  * Includes real-time WebSocket updates for equity.
  */
 export function usePortfolio(refreshInterval = 5000) {
   const [portfolio, setPortfolio] = useState<PortfolioData>(DEFAULT_PORTFOLIO)
-  const [marginHealth, setMarginHealth] = useState<MarginHealthData>(DEFAULT_MARGIN_HEALTH)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -90,28 +73,6 @@ export function usePortfolio(refreshInterval = 5000) {
         const totalPnl = stats.total_pnl ?? 0
         const pnlPercent = startingCapital > 0 ? (totalPnl / startingCapital) * 100 : 0
         const positionsValue = positions.reduce((sum: number, p: any) => sum + (p.size_usdt ?? 0), 0)
-        
-        // Calculate margin health from positions
-        const marginPositions = positions.map((p: any) => {
-          const distanceToLiq = Math.abs((p.current_price - p.liquidation_price) / p.current_price) * 100
-          return { distanceToLiq }
-        })
-        
-        const positionsSafe = marginPositions.filter((p: any) => p.distanceToLiq >= 15).length
-        const positionsWarning = marginPositions.filter((p: any) => p.distanceToLiq >= 5 && p.distanceToLiq < 15).length
-        const positionsDanger = marginPositions.filter((p: any) => p.distanceToLiq < 5).length
-        
-        const overallStatus: 'safe' | 'warning' | 'danger' | 'critical' = 
-          positionsDanger > 0 ? 'danger' :
-          positionsWarning > 0 ? 'warning' : 'safe'
-        
-        setMarginHealth({
-          overall_status: overallStatus,
-          total_positions: positions.length,
-          positions_safe: positionsSafe,
-          positions_warning: positionsWarning,
-          positions_danger: positionsDanger,
-        })
         
         setPortfolio({
           totalEquity,
@@ -216,7 +177,6 @@ export function usePortfolio(refreshInterval = 5000) {
 
   return {
     portfolio,
-    marginHealth,
     loading,
     error,
     refresh: fetchPortfolio,

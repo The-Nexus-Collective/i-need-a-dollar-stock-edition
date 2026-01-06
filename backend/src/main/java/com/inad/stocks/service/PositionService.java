@@ -36,7 +36,6 @@ public class PositionService {
     private final TraderStateRepository traderStateRepository;
     private final StockBrokerClient stockBrokerClient;
     private final AccountingService accountingService;
-    private final MarginCalculator marginCalculator;
 
     /**
      * Get all open positions enriched with live prices
@@ -106,9 +105,9 @@ public class PositionService {
      */
     @Transactional
     public Position createPosition(String symbol, String direction, BigDecimal entryPrice,
-                                       BigDecimal quantity, BigDecimal sizeUsdt, int leverage,
+                                       BigDecimal quantity, BigDecimal sizeUsdt,
                                        int conviction, String reasoning) {
-        return createPosition(symbol, direction, entryPrice, quantity, sizeUsdt, leverage,
+        return createPosition(symbol, direction, entryPrice, quantity, sizeUsdt,
                 conviction, reasoning, null, null, null, null, null, null, null);
     }
     
@@ -117,15 +116,11 @@ public class PositionService {
      */
     @Transactional
     public Position createPosition(String symbol, String direction, BigDecimal entryPrice,
-                                   BigDecimal quantity, BigDecimal sizeUsdt, int leverage,
+                                   BigDecimal quantity, BigDecimal sizeUsdt,
                                    int conviction, String reasoning,
                                    String preMortem, String bullCase, String bearCase,
                                    Integer expectedHoldHoursMin, Integer expectedHoldHoursMax,
                                    BigDecimal targetPnlPercent, BigDecimal maxAcceptableLossPercent) {
-        // Calculate margin fields
-        BigDecimal isolatedMargin = marginCalculator.calculateInitialMargin(sizeUsdt, leverage);
-        BigDecimal maintMarginRate = marginCalculator.getMaintMarginRate(symbol, sizeUsdt);
-        
         Position position = Position.builder()
                 .id(UUID.randomUUID().toString().replace("-", ""))
                 .symbol(symbol)
@@ -133,15 +128,10 @@ public class PositionService {
                 .entryPrice(entryPrice)
                 .quantity(quantity)
                 .sizeUsd(sizeUsdt)
-                .leverage(leverage)
                 .conviction(BigDecimal.valueOf(conviction))
                 .reasoning(reasoning)
                 .status("OPEN")
                 .entryTime(Instant.now())
-                // Margin system fields
-                .marginMode("ISOLATED")
-                .isolatedMargin(isolatedMargin)
-                .maintMarginRate(maintMarginRate)
                 // Self-learning Pre-Mortem fields
                 .preMortem(preMortem)
                 .bullCase(bullCase)
@@ -152,13 +142,9 @@ public class PositionService {
                 .maxAcceptableLossPercent(maxAcceptableLossPercent)
                 .build();
         
-        // Calculate and set liquidation price
-        position.setLiquidationPrice(marginCalculator.calculateLiquidationPrice(position));
-        
         position = positionRepository.save(position);
-        log.info("Created position: {} {} {} with margin={}, liqPrice={}, preMortem={}", 
-                position.getId(), symbol, direction, isolatedMargin, position.getLiquidationPrice(),
-                preMortem != null ? "yes" : "no");
+        log.info("Created position: {} {} {}, preMortem={}", 
+                position.getId(), symbol, direction, preMortem != null ? "yes" : "no");
         
         return position;
     }
@@ -215,7 +201,6 @@ public class PositionService {
                 .exitPrice(exitPrice)
                 .quantity(position.getQuantity())
                 .sizeUsd(position.getSizeUsd())
-                .leverage(position.getLeverage())
                 .pnlUsd(pnl)
                 .pnlPercent(pnlPercent)
                 .entryTime(position.getEntryTime())
@@ -237,74 +222,6 @@ public class PositionService {
         
         return toDTO(position, exitPrice);
     }
-
-    /**
-     * Close a position due to margin call (forced liquidation).
-     * Uses MARGIN_CALL accounting and records the full loss.
-     */
-    @Transactional
-    public PositionDTO closePositionMarginCall(String positionId, BigDecimal exitPrice) {
-        Position position = positionRepository.findById(positionId)
-                .orElseThrow(() -> new RuntimeException("Position not found: " + positionId));
-        
-        // Calculate PnL at the exit price (should be near -100% of margin)
-        BigDecimal pnl = position.calculateUnrealizedPnl(exitPrice);
-        Instant exitTime = Instant.now();
-        long durationSeconds = java.time.Duration.between(position.getEntryTime(), exitTime).getSeconds();
-        
-        // Set status to MARGIN_CALL (distinct from CLOSED)
-        position.setStatus("MARGIN_CALL");
-        position.setExitTime(exitTime);
-        position.setExitPrice(exitPrice);
-        position.setRealizedPnl(pnl);
-        
-        position = positionRepository.save(position);
-        
-        // Record in accounting ledger using MARGIN_CALL transaction type
-        accountingService.recordMarginCall(
-                positionId,
-                position.getSymbol(),
-                position.getSizeUsd(),
-                pnl,
-                exitPrice
-        );
-        
-        // Create trade record for history with MARGIN_CALL exit reason
-        BigDecimal pnlPercent = position.getSizeUsd().compareTo(BigDecimal.ZERO) > 0
-                ? pnl.divide(position.getSizeUsd(), 4, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100))
-                : BigDecimal.ZERO;
-        
-        Trade trade = Trade.builder()
-                .id(UUID.randomUUID().toString().replace("-", ""))
-                .positionId(positionId)
-                .symbol(position.getSymbol())
-                .direction(position.getDirection())
-                .entryPrice(position.getEntryPrice())
-                .exitPrice(exitPrice)
-                .quantity(position.getQuantity())
-                .sizeUsd(position.getSizeUsd())
-                .leverage(position.getLeverage())
-                .pnlUsd(pnl)
-                .pnlPercent(pnlPercent)
-                .entryTime(position.getEntryTime())
-                .exitTime(exitTime)
-                .durationSeconds((int) durationSeconds)
-                .exitReason("MARGIN_CALL")
-                .conviction(position.getConviction())
-                .reasoning(position.getReasoning())
-                .totalFees(BigDecimal.ZERO) // No fees on margin call
-                .build();
-        
-        tradeRepository.save(trade);
-        
-        // Update trader state statistics (always a loss for margin call)
-        updateTraderStateStats(false);
-        
-        log.error("MARGIN CALL: Closed position {} {} {} with PnL: {} ({}%)", 
-                positionId, position.getSymbol(), position.getDirection(), pnl, pnlPercent);
-        
-        return toDTO(position, exitPrice);
-    }
     
     /**
      * Update trader state statistics after closing a position.
@@ -319,99 +236,6 @@ public class PositionService {
             state.setLosingTrades(state.getLosingTrades() + 1);
         }
         traderStateRepository.save(state);
-    }
-
-    /**
-     * Change leverage on an existing position (Binance-style).
-     * 
-     * This does NOT change position size or realize PnL.
-     * It only adjusts margin allocation:
-     * - INCREASE leverage: Less margin needed, funds released to cash
-     * - DECREASE leverage: More margin needed, funds reserved from cash
-     * 
-     * @param positionId The position to modify
-     * @param newLeverage Target leverage (1-125 depending on bracket)
-     * @param reason Reason for the change
-     * @return Updated position DTO
-     * @throws IllegalArgumentException if leverage is invalid
-     * @throws InsufficientMarginException if not enough available balance
-     */
-    @Transactional
-    public PositionDTO changeLeverage(String positionId, int newLeverage, String reason) {
-        Position position = positionRepository.findById(positionId)
-                .orElseThrow(() -> new RuntimeException("Position not found: " + positionId));
-        
-        if (!"OPEN".equals(position.getStatus())) {
-            throw new IllegalStateException("Cannot change leverage on closed position");
-        }
-        
-        int oldLeverage = position.getLeverage();
-        if (oldLeverage == newLeverage) {
-            log.info("Leverage already at {} for {}", newLeverage, position.getSymbol());
-            return toDTO(position, stockBrokerClient.getPrice(position.getSymbol()));
-        }
-        
-        // Validate against bracket limits
-        int maxLeverage = marginCalculator.getMaxLeverage(position.getSymbol(), position.getSizeUsd());
-        if (newLeverage < 1 || newLeverage > maxLeverage) {
-            throw new IllegalArgumentException(
-                "Leverage must be between 1 and " + maxLeverage + " for this position size");
-        }
-        
-        // Calculate margin difference
-        BigDecimal oldMargin = position.getIsolatedMargin() != null 
-                ? position.getIsolatedMargin() 
-                : marginCalculator.calculateInitialMargin(position.getSizeUsd(), oldLeverage);
-        BigDecimal newMargin = marginCalculator.calculateInitialMargin(position.getSizeUsd(), newLeverage);
-        BigDecimal marginDiff = newMargin.subtract(oldMargin);
-        
-        BigDecimal oldLiqPrice = position.getLiquidationPrice();
-        
-        // Reserve or release margin based on direction
-        if (marginDiff.compareTo(BigDecimal.ZERO) > 0) {
-            // DECREASE leverage - need more margin
-            BigDecimal availableBalance = accountingService.getAvailableBalance();
-            if (availableBalance.compareTo(marginDiff) < 0) {
-                throw new RuntimeException(
-                    "Insufficient margin: need " + marginDiff + " USDT, have " + availableBalance + " USDT available");
-            }
-            accountingService.reserveMargin(positionId, marginDiff);
-            log.info("Reserved {} USDT additional margin for {} leverage change {}x → {}x",
-                    marginDiff, position.getSymbol(), oldLeverage, newLeverage);
-        } else if (marginDiff.compareTo(BigDecimal.ZERO) < 0) {
-            // INCREASE leverage - release margin
-            BigDecimal released = marginDiff.abs();
-            accountingService.releaseMargin(positionId, released);
-            log.info("Released {} USDT margin for {} leverage change {}x → {}x",
-                    released, position.getSymbol(), oldLeverage, newLeverage);
-        }
-        
-        // Update position
-        position.setLeverage(newLeverage);
-        position.setIsolatedMargin(newMargin);
-        position.setMaintMarginRate(marginCalculator.getMaintMarginRate(position.getSymbol(), position.getSizeUsd()));
-        position.setLiquidationPrice(marginCalculator.calculateLiquidationPrice(position));
-        
-        position = positionRepository.save(position);
-        
-        // Record the leverage change in accounting ledger for audit
-        accountingService.recordLeverageChange(
-            positionId,
-            position.getSymbol(),
-            oldLeverage,
-            newLeverage,
-            oldMargin,
-            newMargin,
-            oldLiqPrice,
-            position.getLiquidationPrice(),
-            reason
-        );
-        
-        log.info("Changed leverage for {} from {}x to {}x. Margin: {} → {}, Liq: {} → {}",
-                position.getSymbol(), oldLeverage, newLeverage,
-                oldMargin, newMargin, oldLiqPrice, position.getLiquidationPrice());
-        
-        return toDTO(position, stockBrokerClient.getPrice(position.getSymbol()));
     }
 
     /**
@@ -445,24 +269,18 @@ public class PositionService {
             throw new RuntimeException("Failed to extend position: " + tradeResult.getError());
         }
         
-        // Calculate weighted average entry price
+        // Broker returns whole shares only - calculate weighted average entry price
+        BigDecimal addedQuantity = tradeResult.getQuantity().setScale(0, RoundingMode.DOWN); // Ensure whole shares
         BigDecimal oldTotalValue = position.getEntryPrice().multiply(position.getQuantity());
-        BigDecimal newTotalValue = tradeResult.getPrice().multiply(tradeResult.getQuantity());
-        BigDecimal newTotalQuantity = position.getQuantity().add(tradeResult.getQuantity());
+        BigDecimal newTotalValue = tradeResult.getPrice().multiply(addedQuantity);
+        BigDecimal newTotalQuantity = position.getQuantity().add(addedQuantity);
         BigDecimal newAvgEntryPrice = oldTotalValue.add(newTotalValue)
                 .divide(newTotalQuantity, 8, RoundingMode.HALF_UP);
         
         // Update position
-        BigDecimal oldSizeUsdt = position.getSizeUsd();
         position.setEntryPrice(newAvgEntryPrice);
         position.setQuantity(newTotalQuantity);
         position.setSizeUsd(position.getSizeUsd().add(addedSizeUsdt));
-        
-        // Recalculate margin
-        BigDecimal newMargin = marginCalculator.calculateInitialMargin(position.getSizeUsd(), position.getLeverage());
-        position.setIsolatedMargin(newMargin);
-        position.setMaintMarginRate(marginCalculator.getMaintMarginRate(position.getSymbol(), position.getSizeUsd()));
-        position.setLiquidationPrice(marginCalculator.calculateLiquidationPrice(position));
         
         position = positionRepository.save(position);
         
@@ -478,9 +296,10 @@ public class PositionService {
                 position.getDirection()
         );
         
-        log.info("Extended position {} {}: +{} USDT @ {} (new avg: {}, new size: {})",
+        log.info("Extended position {} {}: +{} whole shares ({} USDT) @ {} (new avg: {}, total: {} shares, {} USDT)",
                 position.getSymbol(), position.getDirection(),
-                addedSizeUsdt, tradeResult.getPrice(), newAvgEntryPrice, position.getSizeUsd());
+                addedQuantity.intValue(), addedSizeUsdt, tradeResult.getPrice(), 
+                newAvgEntryPrice, newTotalQuantity.intValue(), position.getSizeUsd());
         
         return ExtendResult.builder()
                 .success(true)
@@ -516,10 +335,21 @@ public class PositionService {
             throw new IllegalArgumentException("Scale percent must be between 1 and 99");
         }
         
-        // Calculate reduction amounts
+        // Calculate reduction amounts - WHOLE SHARES ONLY
         BigDecimal reductionFactor = BigDecimal.valueOf(scalePercent).divide(BigDecimal.valueOf(100), 8, RoundingMode.HALF_UP);
-        BigDecimal reducedQuantity = position.getQuantity().multiply(reductionFactor).setScale(8, RoundingMode.HALF_UP);
-        BigDecimal reducedSizeUsdt = position.getSizeUsd().multiply(reductionFactor).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal reducedQuantity = position.getQuantity().multiply(reductionFactor).setScale(0, RoundingMode.DOWN);
+        
+        // Must reduce at least 1 whole share
+        if (reducedQuantity.compareTo(BigDecimal.ONE) < 0) {
+            throw new IllegalArgumentException(
+                    "Cannot reduce position: " + scalePercent + "% of " + position.getQuantity() + 
+                    " shares = " + position.getQuantity().multiply(reductionFactor).setScale(2, RoundingMode.HALF_UP) + 
+                    " shares, but minimum is 1 whole share");
+        }
+        
+        // Calculate actual USD reduction based on whole shares
+        BigDecimal actualReductionFactor = reducedQuantity.divide(position.getQuantity(), 8, RoundingMode.HALF_UP);
+        BigDecimal reducedSizeUsdt = position.getSizeUsd().multiply(actualReductionFactor).setScale(2, RoundingMode.HALF_UP);
         
         // Get current price
         BigDecimal currentPrice = stockBrokerClient.getPrice(position.getSymbol());
@@ -548,12 +378,6 @@ public class PositionService {
         position.setQuantity(position.getQuantity().subtract(reducedQuantity));
         position.setSizeUsd(position.getSizeUsd().subtract(reducedSizeUsdt));
         
-        // Recalculate margin for remaining position
-        BigDecimal newMargin = marginCalculator.calculateInitialMargin(position.getSizeUsd(), position.getLeverage());
-        position.setIsolatedMargin(newMargin);
-        position.setMaintMarginRate(marginCalculator.getMaintMarginRate(position.getSymbol(), position.getSizeUsd()));
-        position.setLiquidationPrice(marginCalculator.calculateLiquidationPrice(position));
-        
         position = positionRepository.save(position);
         
         // Record in accounting ledger
@@ -581,7 +405,6 @@ public class PositionService {
                 .exitPrice(tradeResult.getPrice())
                 .quantity(reducedQuantity)
                 .sizeUsd(reducedSizeUsdt)
-                .leverage(position.getLeverage())
                 .pnlUsd(partialPnl)
                 .pnlPercent(pnlPercent)
                 .entryTime(position.getEntryTime())
@@ -595,9 +418,10 @@ public class PositionService {
         
         tradeRepository.save(trade);
         
-        log.info("Reduced position {} {}: -{}% ({} USDT) @ {} - PnL: {} (remaining: {} USDT)",
+        log.info("Reduced position {} {}: -{} whole shares ({}%, {} USDT) @ {} - PnL: {} (remaining: {} shares, {} USDT)",
                 position.getSymbol(), position.getDirection(),
-                scalePercent, reducedSizeUsdt, tradeResult.getPrice(), partialPnl, position.getSizeUsd());
+                reducedQuantity.intValue(), scalePercent, reducedSizeUsdt, 
+                tradeResult.getPrice(), partialPnl, position.getQuantity().intValue(), position.getSizeUsd());
         
         return ReduceResult.builder()
                 .success(true)
@@ -725,19 +549,6 @@ public class PositionService {
             pnlPercent = p.calculatePnlPercent(currentPrice);
         }
         
-        // Use stored liquidation price, or calculate if not available
-        BigDecimal liquidationPrice = p.getLiquidationPrice();
-        if (liquidationPrice == null && "OPEN".equals(p.getStatus()) && 
-            p.getLeverage() != null && p.getLeverage() > 0) {
-            liquidationPrice = marginCalculator.calculateLiquidationPrice(p);
-        }
-        
-        // Calculate margin risk percentage (0-100%)
-        BigDecimal marginRisk = null;
-        if (currentPrice != null && "OPEN".equals(p.getStatus())) {
-            marginRisk = marginCalculator.calculateMarginRisk(p, currentPrice);
-        }
-        
         return PositionDTO.builder()
                 .id(p.getId())
                 .symbol(p.getSymbol())
@@ -745,7 +556,6 @@ public class PositionService {
                 .entryPrice(p.getEntryPrice())
                 .quantity(p.getQuantity())
                 .sizeUsd(p.getSizeUsd())
-                .leverage(p.getLeverage())
                 .stopLossPrice(p.getStopLossPrice())
                 .takeProfitPrice(p.getTakeProfitPrice())
                 .status(p.getStatus())
@@ -758,12 +568,6 @@ public class PositionService {
                 .conviction(p.getConviction())
                 .reasoning(p.getReasoning())
                 .currentPrice(currentPrice)
-                .liquidationPrice(liquidationPrice)
-                // Margin system fields
-                .marginMode(p.getMarginMode())
-                .isolatedMargin(p.getIsolatedMargin())
-                .maintMarginRate(p.getMaintMarginRate())
-                .marginRisk(marginRisk)
                 // Pre-Mortem / Self-Learning fields
                 .preMortem(p.getPreMortem())
                 .bullCase(p.getBullCase())

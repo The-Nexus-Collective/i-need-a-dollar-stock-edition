@@ -159,12 +159,18 @@ public class GrokService {
 
     private String getSystemPrompt() {
         return """
-            You are a professional stock portfolio manager specializing in US Tech and Defense stocks.
+            You are an AGGRESSIVE stock portfolio manager targeting 100%+ ANNUAL RETURNS.
             
             CRITICAL: You MUST use your search tools (x_keyword_search, x_semantic_search, web_search) 
             to gather CURRENT data about stock sentiment, earnings, news, and market conditions.
             
             Your internal knowledge may be outdated. Real-time search results are essential.
+            
+            STRATEGY:
+            - Target: 100%+ annual return (aggressive growth)
+            - YOU decide position sizes based on conviction - NO FIXED LIMITS
+            - High-conviction trades can use up to 100% of available capital
+            - Focus on momentum and catalysts for maximum returns
             
             Focus on:
             - Tech stocks: AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA, AMD, etc.
@@ -235,21 +241,25 @@ public class GrokService {
             ✓ Sector-wide selloff with no recovery signals → Consider CLOSE
             
             ═══════════════════════════════════════════════════════════════════
-            TASK 3: NEW OPPORTUNITIES
+            TASK 3: NEW OPPORTUNITIES - AGGRESSIVE 100%%+ ANNUAL RETURN TARGET
             ═══════════════════════════════════════════════════════════════════
             
             Available slots for new positions: %d
             
-            PORTFOLIO LIMITS:
-            1. Position limit: Maximum 50 open positions
-            2. Capital limit: Maximum 90%% of capital deployed
-            3. LONG only (no short selling)
-            4. Only stocks from our Tech/Defense universe
+            AGGRESSIVE STRATEGY - NO FIXED POSITION SIZE LIMITS:
+            1. YOU decide position_size_percent (1-100%% of available capital)
+            2. High-conviction (80+) trades: Size aggressively, up to 50-100%%
+            3. Medium-conviction (60-79) trades: Size moderately, 10-30%%
+            4. LONG only (no short selling)
+            5. Only stocks from our Tech/Defense universe
+            
+            TARGET: 100%%+ annual return - be aggressive with high-conviction opportunities!
             
             Search for new trading opportunities:
             - Look for positive catalysts (earnings beats, upgrades, contracts, products)
             - Conviction must be > 60
             - Prefer stocks with clear momentum and sentiment
+            - Size positions based on your conviction - NO ARTIFICIAL LIMITS
             
             ═══════════════════════════════════════════════════════════════════
             PRE-MORTEM REQUIREMENT (CRITICAL FOR SELF-LEARNING!)
@@ -298,6 +308,7 @@ public class GrokService {
                   "direction": "LONG",
                   "sector": "DEFENSE",
                   "conviction": 78,
+                  "position_size_percent": 25,
                   "sentiment_score": 68,
                   "narrative_strength": 80,
                   "reason": "New defense contract announced, positive analyst coverage",
@@ -320,9 +331,11 @@ public class GrokService {
             IMPORTANT:
             - All symbols as NYSE/NASDAQ tickers (e.g. AAPL, RTX, NVDA)
             - sector must be "TECH" or "DEFENSE"
+            - position_size_percent is REQUIRED (1-100) - YOU decide based on conviction!
             - scale_percent only used with EXTEND/REDUCE (10-100)
             - pre_mortem, bull_case, bear_case are REQUIRED for new opportunities!
             - LONG only - no SHORT positions allowed
+            - TARGET: 100%+ annual return - size aggressively!
             
             ═══════════════════════════════════════════════════════════════════
             ANALYZE NOW - OUTPUT JSON ONLY
@@ -406,12 +419,17 @@ public class GrokService {
                             ? new BigDecimal(opp.get("target_pnl_percent").asText()) : null;
                     BigDecimal maxLoss = opp.has("max_acceptable_loss_percent") 
                             ? new BigDecimal(opp.get("max_acceptable_loss_percent").asText()) : null;
+                    
+                    // Position size percent determined by Grok (1-100%), no fixed limits
+                    Integer positionSizePercent = opp.has("position_size_percent") 
+                            ? opp.get("position_size_percent").asInt() : null;
 
                     opportunities.add(NewOpportunity.builder()
                             .symbol(opp.has("symbol") ? opp.get("symbol").asText() : "")
                             .direction(NewOpportunity.Direction.LONG)
                             .sector(opp.has("sector") ? opp.get("sector").asText() : "OTHER")
                             .conviction(conviction)
+                            .positionSizePercent(positionSizePercent)
                             .sentimentScore(opp.has("sentiment_score") ? opp.get("sentiment_score").asInt() : 0)
                             .narrativeStrength(opp.has("narrative_strength") ? opp.get("narrative_strength").asInt() : 0)
                             .reason(opp.has("reason") ? opp.get("reason").asText() : "")

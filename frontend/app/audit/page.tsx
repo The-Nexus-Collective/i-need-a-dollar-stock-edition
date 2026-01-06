@@ -24,8 +24,41 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   MagnifyingGlassIcon,
+  BanknotesIcon,
+  CalculatorIcon,
+  ArrowTrendingUpIcon,
+  ArrowTrendingDownIcon,
 } from '@heroicons/react/24/solid'
-import Link from 'next/link'
+import { Sidebar } from '@/components/Sidebar'
+import { MobileHeader } from '@/components/MobileHeader'
+
+interface AccountingBreakdown {
+  startingCapital: number
+  cashBalance: number
+  positionsValue: number
+  realizedPnl: number
+  costBreakdown: {
+    totalTradingCosts: number
+    fees: number
+    spread: number
+    slippage: number
+  }
+  bookEquity: number
+  expectedEquity: number
+  equityDiscrepancy: number
+  accountBalances: Record<string, number>
+  reconciliation: {
+    balanced: boolean
+    totalDebits: number
+    totalCredits: number
+    imbalance: number
+    discrepancies: string[]
+  }
+  totalLedgerEntries: number
+  totalTransactions: number
+  initialized: boolean
+  timestamp: string
+}
 
 interface AuditEntry {
   id: number
@@ -53,6 +86,9 @@ export default function AuditPage() {
   const [loading, setLoading] = useState(true)
   const [verification, setVerification] = useState<ChainVerification | null>(null)
   const [verifying, setVerifying] = useState(false)
+  const [breakdown, setBreakdown] = useState<AccountingBreakdown | null>(null)
+  const [breakdownLoading, setBreakdownLoading] = useState(true)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   
   // Filters
   const [eventTypeFilter, setEventTypeFilter] = useState<string>('')
@@ -61,6 +97,7 @@ export default function AuditPage() {
 
   useEffect(() => {
     fetchAuditLog()
+    fetchAccountingBreakdown()
   }, [eventTypeFilter])
 
   async function fetchAuditLog() {
@@ -75,6 +112,18 @@ export default function AuditPage() {
       console.error('Failed to fetch audit log:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function fetchAccountingBreakdown() {
+    try {
+      setBreakdownLoading(true)
+      const data = await api.getAccountingBreakdown()
+      setBreakdown(data)
+    } catch (error) {
+      console.error('Failed to fetch accounting breakdown:', error)
+    } finally {
+      setBreakdownLoading(false)
     }
   }
 
@@ -109,14 +158,16 @@ export default function AuditPage() {
   const actors = [...new Set(entries.map(e => e.actor))]
   const eventTypes = [...new Set(entries.map(e => e.event_type))]
 
-  function getEventIcon(eventType: string) {
+  function getEventIcon(eventType: string | undefined | null) {
+    if (!eventType) return <div className="w-4 h-4 rounded-full bg-accent-cyan/20" />
     if (eventType.includes('approved')) return <CheckCircleIcon className="w-4 h-4 text-accent-emerald" />
     if (eventType.includes('rejected')) return <XCircleIcon className="w-4 h-4 text-accent-red" />
     if (eventType.includes('risk')) return <ShieldCheckIcon className="w-4 h-4 text-accent-amber" />
     return <div className="w-4 h-4 rounded-full bg-accent-cyan/20" />
   }
 
-  function getEventColor(eventType: string): "emerald" | "red" | "amber" | "cyan" | "gray" {
+  function getEventColor(eventType: string | undefined | null): "emerald" | "red" | "amber" | "cyan" | "gray" {
+    if (!eventType) return 'gray'
     if (eventType.includes('approved')) return 'emerald'
     if (eventType.includes('rejected')) return 'red'
     if (eventType.includes('risk')) return 'amber'
@@ -125,13 +176,25 @@ export default function AuditPage() {
   }
 
   return (
-    <div className="min-h-screen p-6">
+    <div className="flex min-h-screen bg-void">
+      <Sidebar 
+        isConnected={true} 
+        mobileOpen={mobileMenuOpen}
+        onMobileClose={() => setMobileMenuOpen(false)}
+      />
+
+      <main className="flex-1 md:ml-[280px] min-w-0">
+        {/* Mobile Header */}
+        <MobileHeader 
+          onMenuClick={() => setMobileMenuOpen(true)}
+          isConnected={true}
+          title="Audit Trail"
+        />
+
+        <div className="p-4 md:p-6 lg:p-8">
       {/* Header */}
-      <header className="flex justify-between items-center mb-8">
+      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
         <div>
-          <Link href="/" className="text-text-muted text-xs hover:text-accent-cyan mb-2 block">
-            ← Back to Dashboard
-          </Link>
           <h1 className="text-2xl font-semibold text-gradient tracking-tight">
             ◈ AUDIT TRAIL
           </h1>
@@ -177,6 +240,234 @@ export default function AuditPage() {
           )}
         </div>
       </header>
+
+      {/* Accounting Breakdown Panel */}
+      <div className="glass rounded-2xl p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gradient flex items-center gap-2">
+            <CalculatorIcon className="w-5 h-5 text-accent-cyan" />
+            Accounting Breakdown
+          </h2>
+          <Button
+            size="xs"
+            variant="secondary"
+            onClick={fetchAccountingBreakdown}
+            loading={breakdownLoading}
+          >
+            Refresh
+          </Button>
+        </div>
+
+        {breakdownLoading && !breakdown ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="w-6 h-6 border-2 border-accent-cyan border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : breakdown ? (
+          <div className="space-y-6">
+            {/* Reconciliation Status Banner */}
+            <div className={`flex items-center gap-3 p-4 rounded-xl ${
+              breakdown.reconciliation.balanced 
+                ? 'bg-accent-emerald/10 border border-accent-emerald/30'
+                : 'bg-accent-red/10 border border-accent-red/30'
+            }`}>
+              {breakdown.reconciliation.balanced ? (
+                <>
+                  <CheckCircleIcon className="w-6 h-6 text-accent-emerald" />
+                  <div>
+                    <p className="font-medium text-accent-emerald">Books Balanced</p>
+                    <p className="text-xs text-text-muted">Accounting equation verified • {breakdown.totalLedgerEntries} entries</p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <ExclamationTriangleIcon className="w-6 h-6 text-accent-red" />
+                  <div>
+                    <p className="font-medium text-accent-red">Reconciliation Issues Found</p>
+                    <p className="text-xs text-accent-red/80">{breakdown.reconciliation.discrepancies.join(' • ')}</p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Account Balances Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="glass rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <BanknotesIcon className="w-4 h-4 text-accent-cyan" />
+                  <p className="text-xs text-text-muted uppercase">Starting Capital</p>
+                </div>
+                <p className="text-xl font-mono font-semibold">
+                  ${breakdown.startingCapital.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              
+              <div className="glass rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <BanknotesIcon className="w-4 h-4 text-accent-emerald" />
+                  <p className="text-xs text-text-muted uppercase">Cash Balance</p>
+                </div>
+                <p className="text-xl font-mono font-semibold">
+                  ${breakdown.cashBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              
+              <div className="glass rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <ArrowTrendingUpIcon className="w-4 h-4 text-purple-400" />
+                  <p className="text-xs text-text-muted uppercase">Positions (Entry Cost)</p>
+                </div>
+                <p className="text-xl font-mono font-semibold">
+                  ${breakdown.positionsValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              
+              <div className="glass rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  {breakdown.realizedPnl >= 0 ? (
+                    <ArrowTrendingUpIcon className="w-4 h-4 text-accent-emerald" />
+                  ) : (
+                    <ArrowTrendingDownIcon className="w-4 h-4 text-accent-red" />
+                  )}
+                  <p className="text-xs text-text-muted uppercase">Realized PnL</p>
+                </div>
+                <p className={`text-xl font-mono font-semibold ${
+                  breakdown.realizedPnl >= 0 ? 'text-accent-emerald' : 'text-accent-red'
+                }`}>
+                  {breakdown.realizedPnl >= 0 ? '+' : ''}${breakdown.realizedPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+            </div>
+
+            {/* Cost Breakdown */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="glass rounded-xl p-4">
+                <h3 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
+                  <ExclamationTriangleIcon className="w-4 h-4 text-accent-amber" />
+                  Trading Costs Breakdown
+                </h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-text-secondary">Total Trading Costs</span>
+                    <span className="font-mono text-accent-red">
+                      -${breakdown.costBreakdown.totalTradingCosts.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-text-muted">├ Fees</span>
+                    <span className="font-mono text-text-secondary">
+                      ${breakdown.costBreakdown.fees.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-text-muted">├ Spread</span>
+                    <span className="font-mono text-text-secondary">
+                      ${breakdown.costBreakdown.spread.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-text-muted">└ Slippage</span>
+                    <span className="font-mono text-text-secondary">
+                      ${breakdown.costBreakdown.slippage.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="glass rounded-xl p-4">
+                <h3 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
+                  <CalculatorIcon className="w-4 h-4 text-accent-cyan" />
+                  Equity Verification
+                </h3>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-text-secondary">Book Equity (Cash + Positions)</span>
+                    <span className="font-mono">
+                      ${breakdown.bookEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-text-secondary">Expected Equity</span>
+                    <span className="font-mono">
+                      ${breakdown.expectedEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="border-t border-glass-border pt-2 mt-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-text-secondary">Discrepancy</span>
+                      <span className={`font-mono font-semibold ${
+                        Math.abs(breakdown.equityDiscrepancy) < 0.01 
+                          ? 'text-accent-emerald' 
+                          : 'text-accent-red'
+                      }`}>
+                        {breakdown.equityDiscrepancy >= 0 ? '+' : ''}${breakdown.equityDiscrepancy.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* All Account Balances */}
+            <div className="glass rounded-xl p-4">
+              <h3 className="text-sm font-semibold text-text-primary mb-3">All Account Balances</h3>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                {Object.entries(breakdown.accountBalances).map(([account, balance]) => (
+                  <div key={account} className="bg-background-secondary rounded-lg p-3">
+                    <p className="text-[10px] text-text-muted uppercase mb-1">{account.replace(/_/g, ' ')}</p>
+                    <p className={`font-mono text-sm ${
+                      balance < 0 ? 'text-accent-red' : 'text-text-primary'
+                    }`}>
+                      ${(balance as number).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Reconciliation Details */}
+            <div className="glass rounded-xl p-4">
+              <h3 className="text-sm font-semibold text-text-primary mb-3">Double-Entry Verification</h3>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <p className="text-xs text-text-muted uppercase mb-1">Total Debits</p>
+                  <p className="font-mono text-lg">${breakdown.reconciliation.totalDebits.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-text-muted uppercase mb-1">Total Credits</p>
+                  <p className="font-mono text-lg">${breakdown.reconciliation.totalCredits.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-text-muted uppercase mb-1">Imbalance</p>
+                  <p className={`font-mono text-lg ${
+                    Math.abs(breakdown.reconciliation.imbalance) < 0.01 
+                      ? 'text-accent-emerald' 
+                      : 'text-accent-red'
+                  }`}>
+                    ${breakdown.reconciliation.imbalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+              </div>
+              
+              {breakdown.reconciliation.discrepancies.length > 0 && (
+                <div className="mt-4 p-3 bg-accent-red/10 rounded-lg border border-accent-red/30">
+                  <p className="text-xs text-accent-red font-medium mb-1">Discrepancies Found:</p>
+                  {breakdown.reconciliation.discrepancies.map((d, i) => (
+                    <p key={i} className="text-xs text-accent-red/80">• {d}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <p className="text-[10px] text-text-muted text-right">
+              Last updated: {new Date(breakdown.timestamp).toLocaleString()}
+            </p>
+          </div>
+        ) : (
+          <div className="text-center py-8 text-text-muted">
+            Failed to load accounting breakdown
+          </div>
+        )}
+      </div>
 
       {/* Filters */}
       <div className="glass rounded-2xl p-4 mb-6">
@@ -348,6 +639,8 @@ export default function AuditPage() {
           </div>
         </div>
       </div>
+        </div>
+      </main>
     </div>
   )
 }

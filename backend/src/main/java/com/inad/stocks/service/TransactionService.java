@@ -43,8 +43,7 @@ public class TransactionService {
             TransactionType.CLOSE,
             TransactionType.EXTEND,
             TransactionType.REDUCE,
-            TransactionType.RESET,
-            TransactionType.MARGIN_CALL
+            TransactionType.RESET
     );
     
     /**
@@ -132,20 +131,19 @@ public class TransactionService {
         PrintWriter pw = new PrintWriter(sw);
         
         // Header
-        pw.println("Timestamp,Type,Symbol,Direction,Size (USDT),Price,Leverage,Fee,Spread,Slippage,Total Costs,Gross PnL,Net PnL,PnL %,Conviction,Reason");
+        pw.println("Timestamp,Type,Symbol,Direction,Size (USDT),Price,Fee,Spread,Slippage,Total Costs,Gross PnL,Net PnL,PnL %,Conviction,Reason");
         
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
                 .withZone(ZoneId.of("UTC"));
         
         for (TransactionDTO tx : transactions) {
-            pw.printf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,\"%s\"%n",
+            pw.printf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,\"%s\"%n",
                     formatter.format(tx.getTimestamp()),
                     tx.getTransactionType(),
                     tx.getSymbol() != null ? tx.getSymbol() : "",
                     tx.getDirection() != null ? tx.getDirection() : "",
                     formatBigDecimal(tx.getSizeUsd()),
                     formatBigDecimal(tx.getPrice()),
-                    tx.getLeverage() != null ? tx.getLeverage() : "",
                     formatBigDecimal(tx.getFee()),
                     formatBigDecimal(tx.getSpread()),
                     formatBigDecimal(tx.getSlippage()),
@@ -304,7 +302,6 @@ public class TransactionService {
                     .direction(position.getDirection())
                     .price(position.getEntryPrice())
                     .quantity(position.getQuantity())
-                    .leverage(position.getLeverage())
                     .conviction(position.getConviction() != null 
                             ? position.getConviction().intValue() : null)
                     .reason(position.getReasoning());
@@ -366,7 +363,6 @@ public class TransactionService {
             case EXTEND -> "Position Extended";
             case REDUCE -> "Position Reduced";
             case RESET -> "System Reset";
-            case MARGIN_CALL -> "Margin Call - Liquidated";
             default -> type.name();
         };
     }

@@ -36,8 +36,8 @@ public class Position {
     @Column(name = "entry_price", nullable = false, precision = 20, scale = 8)
     private BigDecimal entryPrice;
 
-    @Column(nullable = false, precision = 20, scale = 8)
-    private BigDecimal quantity;
+    @Column(nullable = false, precision = 20, scale = 0)
+    private BigDecimal quantity;  // Whole shares only - no fractional shares
 
     @Column(name = "size_usd", nullable = false, precision = 20, scale = 2)
     private BigDecimal sizeUsd;
@@ -75,41 +75,6 @@ public class Position {
 
     @Column(name = "prediction_id")
     private String predictionId;
-
-    // ========== Margin Fields (simplified for stocks) ==========
-    
-    /**
-     * Leverage ratio. For stocks, typically 1 (no leverage) or 2 (margin account).
-     */
-    @Column
-    @Builder.Default
-    private Integer leverage = 1;
-    
-    /**
-     * Liquidation/margin call price.
-     * For stocks with margin, this is where a margin call would occur.
-     */
-    @Column(name = "liquidation_price", precision = 20, scale = 8)
-    private BigDecimal liquidationPrice;
-    
-    /**
-     * Isolated margin amount (for margin trading).
-     */
-    @Column(name = "isolated_margin", precision = 20, scale = 8)
-    private BigDecimal isolatedMargin;
-    
-    /**
-     * Maintenance margin rate.
-     */
-    @Column(name = "maint_margin_rate", precision = 8, scale = 4)
-    private BigDecimal maintMarginRate;
-    
-    /**
-     * Margin mode: CASH (no margin) or MARGIN
-     */
-    @Column(name = "margin_mode", length = 20)
-    @Builder.Default
-    private String marginMode = "CASH";
 
     // ========== Stock-specific Fields ==========
     

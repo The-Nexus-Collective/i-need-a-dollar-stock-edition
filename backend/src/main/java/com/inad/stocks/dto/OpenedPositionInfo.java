@@ -15,7 +15,6 @@ public class OpenedPositionInfo {
     private String direction;
     private BigDecimal entryPrice;
     private BigDecimal sizeUsd;
-    private int leverage;
     private int conviction;
     private String reason;
 }

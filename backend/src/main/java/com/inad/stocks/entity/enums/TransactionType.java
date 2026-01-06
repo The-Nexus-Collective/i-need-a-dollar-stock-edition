@@ -52,16 +52,6 @@ public enum TransactionType {
     /**
      * Funding payment (crypto-style, kept for compatibility)
      */
-    FUNDING,
-    
-    /**
-     * Margin call - forced liquidation
-     */
-    MARGIN_CALL,
-    
-    /**
-     * Leverage change (crypto-style, kept for compatibility)
-     */
-    LEVERAGE_CHANGE
+    FUNDING
 }
 

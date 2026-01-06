@@ -37,8 +37,6 @@ public class TradeDTO {
     @JsonProperty("size_usd")
     private BigDecimal sizeUsd;
     
-    private Integer leverage;
-    
     @JsonProperty("pnl_usd")
     private BigDecimal pnlUsd;
     

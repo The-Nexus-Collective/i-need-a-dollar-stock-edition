@@ -224,8 +224,8 @@ export default function StrategiesPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   
   const [accountData] = useState({
-    balance: 100000,
-    initialBalance: 100000,
+    balance: 0,
+    initialBalance: 0,
     totalFees: 0,
     slippageCost: 0,
     totalTrades: 0,

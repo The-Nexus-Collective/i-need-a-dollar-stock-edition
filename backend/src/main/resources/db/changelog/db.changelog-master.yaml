@@ -76,3 +76,7 @@ databaseChangeLog:
   - include:
       file: 035-margin-fields.sql
       relativeToChangelogFile: true
+
+  - include:
+      file: 040-remove-margin-fields.sql
+      relativeToChangelogFile: true

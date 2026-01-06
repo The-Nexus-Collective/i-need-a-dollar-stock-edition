@@ -36,18 +36,7 @@ public enum AccountType {
      * Trading costs (fees, commissions).
      * Expense account: Debit to increase (reduces equity).
      */
-    TRADING_COSTS,
-    
-    /**
-     * Margin used for leveraged positions.
-     * Asset account tracking margin collateral.
-     */
-    MARGIN_USED,
-    
-    /**
-     * Leverage change tracking (for crypto compatibility).
-     */
-    LEVERAGE_CHANGE;
+    TRADING_COSTS;
     
     /**
      * Check if this is an asset account.

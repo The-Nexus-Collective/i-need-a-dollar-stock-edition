@@ -108,7 +108,6 @@ public class TradeService {
                 .exitPrice(t.getExitPrice())
                 .quantity(t.getQuantity())
                 .sizeUsd(t.getSizeUsd())
-                .leverage(t.getLeverage())
                 .pnlUsd(t.getPnlUsd())
                 .pnlPercent(t.getPnlPercent())
                 .entryTime(t.getEntryTime())

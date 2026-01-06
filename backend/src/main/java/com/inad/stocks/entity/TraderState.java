@@ -28,11 +28,11 @@ public class TraderState {
 
     @Column(name = "current_capital", nullable = false, precision = 18, scale = 2)
     @Builder.Default
-    private BigDecimal currentCapital = new BigDecimal("100000");
+    private BigDecimal currentCapital = BigDecimal.ZERO;
 
     @Column(name = "starting_capital", nullable = false, precision = 18, scale = 2)
     @Builder.Default
-    private BigDecimal startingCapital = new BigDecimal("100000");
+    private BigDecimal startingCapital = BigDecimal.ZERO;
 
     @Column(name = "total_cycles")
     @Builder.Default
@@ -60,7 +60,7 @@ public class TraderState {
 
     @Column(name = "peak_capital", precision = 18, scale = 2)
     @Builder.Default
-    private BigDecimal peakCapital = new BigDecimal("100000");
+    private BigDecimal peakCapital = BigDecimal.ZERO;
 
     @Column(name = "total_fees_paid", precision = 18, scale = 4)
     @Builder.Default

@@ -68,11 +68,6 @@ public class TransactionDTO {
     private BigDecimal sizeUsd;
     
     /**
-     * Leverage used.
-     */
-    private Integer leverage;
-    
-    /**
      * Conviction score (0-100).
      */
     private Integer conviction;

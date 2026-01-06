@@ -35,7 +35,7 @@ public class PortfolioController {
     private final MarketHoursService marketHoursService;
     private final PortfolioManagerService portfolioManagerService;
 
-    @Value("${trading.capital.starting:100000}")
+    @Value("${trading.capital.starting:0}")
     private BigDecimal startingCapital;
 
     @Value("${trading.position.max-positions:50}")

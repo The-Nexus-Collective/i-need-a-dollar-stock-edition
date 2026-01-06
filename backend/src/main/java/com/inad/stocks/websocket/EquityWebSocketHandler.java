@@ -133,7 +133,7 @@ public class EquityWebSocketHandler extends TextWebSocketHandler {
         Map<String, Object> message = Map.of(
             "type", "paper_trades_reset",
             "message", "All paper trades have been reset",
-            "initial_capital", 100000,
+            "initial_capital", 0,
             "timestamp", Instant.now().toString()
         );
         broadcast(message);

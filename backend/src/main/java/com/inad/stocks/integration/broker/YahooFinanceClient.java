@@ -119,11 +119,15 @@ public class YahooFinanceClient implements StockBrokerClient {
             return TradeResult.failure(symbol, "Could not get current price for " + symbol);
         }
         
-        // Calculate quantity (whole shares only for simplicity)
-        BigDecimal quantity = amount.divide(price, 4, RoundingMode.DOWN);
-        if (quantity.compareTo(BigDecimal.ZERO) <= 0) {
-            return TradeResult.failure(symbol, "Amount too small to buy any shares");
+        // Calculate quantity - WHOLE SHARES ONLY (no fractional shares)
+        BigDecimal quantity = amount.divide(price, 0, RoundingMode.DOWN);
+        if (quantity.compareTo(BigDecimal.ONE) < 0) {
+            return TradeResult.failure(symbol, 
+                    "Amount $" + amount + " too small to buy at least 1 share of " + symbol + " @ $" + price);
         }
+        
+        // Calculate actual investment amount based on whole shares
+        BigDecimal actualAmount = quantity.multiply(price);
         
         // Apply simulated slippage (0.01% - 0.05%)
         BigDecimal slippage = price.multiply(new BigDecimal("0.0003")); // 0.03% average
@@ -133,15 +137,21 @@ public class YahooFinanceClient implements StockBrokerClient {
         
         String positionId = UUID.randomUUID().toString().substring(0, 8);
         
-        log.info("Executed {} {} {} shares @ ${} (market: ${})", 
-                side, symbol, quantity, executedPrice, price);
+        log.info("Executed {} {} {} whole shares @ ${} (market: ${}, requested: ${}, actual: ${})", 
+                side, symbol, quantity.intValue(), executedPrice, price, amount, actualAmount);
         
         return TradeResult.success(positionId, symbol, side, executedPrice, quantity, COMMISSION_PER_TRADE);
     }
     
     @Override
     public TradeResult closePosition(String symbol, String side, BigDecimal quantity, BigDecimal entryPrice) {
-        log.info("Closing position: {} {} {} shares (entry: ${})", side, symbol, quantity, entryPrice);
+        // Ensure whole shares only
+        BigDecimal wholeQuantity = quantity.setScale(0, RoundingMode.DOWN);
+        if (wholeQuantity.compareTo(BigDecimal.ONE) < 0) {
+            return TradeResult.failure(symbol, "Cannot close less than 1 whole share");
+        }
+        
+        log.info("Closing position: {} {} {} whole shares (entry: ${})", side, symbol, wholeQuantity.intValue(), entryPrice);
         
         BigDecimal price = getPrice(symbol);
         if (price == null) {
@@ -158,16 +168,16 @@ public class YahooFinanceClient implements StockBrokerClient {
         BigDecimal pnl;
         if ("SELL".equalsIgnoreCase(side)) {
             // Closing a long: profit if price went up
-            pnl = executedPrice.subtract(entryPrice).multiply(quantity);
+            pnl = executedPrice.subtract(entryPrice).multiply(wholeQuantity);
         } else {
             // Closing a short (buying to cover): profit if price went down
-            pnl = entryPrice.subtract(executedPrice).multiply(quantity);
+            pnl = entryPrice.subtract(executedPrice).multiply(wholeQuantity);
         }
         
-        log.info("Closed {} position: {} shares @ ${}, PnL: ${}", 
-                symbol, quantity, executedPrice, pnl);
+        log.info("Closed {} position: {} whole shares @ ${}, PnL: ${}", 
+                symbol, wholeQuantity.intValue(), executedPrice, pnl);
         
-        return TradeResult.success(null, symbol, side, executedPrice, quantity, COMMISSION_PER_TRADE);
+        return TradeResult.success(null, symbol, side, executedPrice, wholeQuantity, COMMISSION_PER_TRADE);
     }
     
     @Override

@@ -16,6 +16,7 @@ import {
   Zap,
   BookOpen,
   Brain,
+  Calculator,
   X,
 } from 'lucide-react'
 import { clsx } from 'clsx'
@@ -33,6 +34,7 @@ const navItems = [
   { icon: Brain, label: 'Learning', href: '/learning' },
   { icon: BookOpen, label: 'Logbook', href: '/logbook' },
   { icon: History, label: 'History', href: '/history' },
+  { icon: Calculator, label: 'Audit', href: '/audit' },
   { icon: Settings, label: 'Settings', href: '/settings' },
 ]
 
@@ -64,7 +66,7 @@ export function Sidebar({ isConnected, mobileOpen = false, onMobileClose }: Side
   const pnl = isNaN(portfolio?.totalPnl) ? 0 : (portfolio?.totalPnl ?? 0)
   const pnlPercent = isNaN(portfolio?.pnlPercent) ? 0 : (portfolio?.pnlPercent ?? 0)
   const winRate = isNaN(portfolio?.winRate) ? 0 : (portfolio?.winRate ?? 0)
-  const totalEquity = isNaN(portfolio?.totalEquity) ? 100000 : (portfolio?.totalEquity ?? 100000)
+  const totalEquity = isNaN(portfolio?.totalEquity) ? 0 : (portfolio?.totalEquity ?? 0)
   const totalTrades = portfolio?.totalTrades ?? 0
   const totalFees = isNaN(portfolio?.totalFees) ? 0 : (portfolio?.totalFees ?? 0)
   const totalSpread = isNaN(portfolio?.totalSpread) ? 0 : (portfolio?.totalSpread ?? 0)

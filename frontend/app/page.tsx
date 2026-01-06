@@ -908,10 +908,11 @@ export default function Dashboard() {
   const positions = pmStatus?.portfolio?.positions || []
   
   // Use live equity data if available, otherwise fall back to API data
-  const totalEquity = liveEquity?.total_equity ?? stats?.total_equity ?? 100000
+  const totalEquity = liveEquity?.total_equity ?? stats?.total_equity ?? 0
   const unrealizedPnl = liveEquity?.unrealized_pnl ?? stats?.unrealized_pnl ?? 0
-  const startingCapital = stats?.starting_capital || 100000
-  const totalPnl = (stats?.realized_pnl || 0) + unrealizedPnl
+  const startingCapital = stats?.starting_capital || 0
+  // Total PnL = Total Equity - Starting Capital (correct accounting equation)
+  const totalPnl = totalEquity - startingCapital
   const pnlPercent = startingCapital > 0 ? ((totalPnl / startingCapital) * 100) : 0
   
   // Build a map of live position data for quick lookup
@@ -1242,7 +1243,7 @@ export default function Dashboard() {
         >
           <EquityChart 
             data={equityData} 
-            startingCapital={stats?.starting_capital || 100000} 
+            startingCapital={stats?.starting_capital || 0} 
           />
         </motion.div>
 

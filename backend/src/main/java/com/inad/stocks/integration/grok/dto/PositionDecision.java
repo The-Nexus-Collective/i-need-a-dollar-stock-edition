@@ -21,9 +21,7 @@ import lombok.NoArgsConstructor;
 public class PositionDecision {
     
     public enum Action {
-        KEEP, CLOSE, EXTEND, REDUCE,
-        // Leverage actions (not typically used for stocks, kept for compatibility)
-        INCREASE_LEVERAGE, DECREASE_LEVERAGE, LEVERAGE_CHANGE
+        KEEP, CLOSE, EXTEND, REDUCE
     }
     
     private String symbol;
@@ -31,7 +29,6 @@ public class PositionDecision {
     private String reason;
     private int currentSentiment;  // -100 to +100
     private int scalePercent;      // For EXTEND/REDUCE: percentage to scale (10-100)
-    private Integer targetLeverage; // For leverage change actions (not used for stocks)
     
     public static PositionDecision keep(String symbol, String reason, int sentiment) {
         return PositionDecision.builder()

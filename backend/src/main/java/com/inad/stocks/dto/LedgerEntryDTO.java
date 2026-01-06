@@ -72,8 +72,6 @@ public class LedgerEntryDTO {
             case REALIZED_PNL -> "Realized P&L";
             case TRADING_COSTS -> "Trading Costs";
             case STARTING_CAPITAL -> "Starting Capital";
-            case MARGIN_USED -> "Margin Used";
-            case LEVERAGE_CHANGE -> "Leverage Change";
         };
     }
 }

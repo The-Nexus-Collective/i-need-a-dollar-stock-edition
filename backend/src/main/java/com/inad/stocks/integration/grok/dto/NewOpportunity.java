@@ -36,8 +36,12 @@ public class NewOpportunity {
     private String reason;
     private List<String> keySignals;
     
-    @Builder.Default
-    private Integer leverage = 1;     // Default 1x for stocks (no leverage)
+    /**
+     * Position size as percentage of available capital (1-100).
+     * Determined by Grok based on conviction and market conditions.
+     * No upper limit - Grok decides how aggressively to size positions.
+     */
+    private Integer positionSizePercent;
     
     // ========== Self-Learning Pre-Mortem Fields ==========
     

@@ -145,7 +145,7 @@ PORT=3100 npm run dev
 | `XAI_API_KEY` | - | Grok xAI API key |
 | `MODE` | `paper` | Trading mode (paper/live) |
 | `CYCLE_INTERVAL` | `600000` | Trading cycle interval (ms) |
-| `STARTING_CAPITAL` | `100000` | Starting capital (USD) |
+| `STARTING_CAPITAL` | `1000000` | Starting capital (USD) |
 
 ### Frontend
 

@@ -113,7 +113,6 @@ public class LogbookController {
                             .direction(info.getDirection())
                             .price(info.getEntryPrice())
                             .size(info.getSizeUsd())
-                            .leverage(info.getLeverage())
                             .conviction(info.getConviction())
                             .reason(info.getReason())
                             .build())

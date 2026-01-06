@@ -298,13 +298,6 @@ public class PortfolioManagerService {
                         reducedPositions.add(info);
                     }
                 }
-                case INCREASE_LEVERAGE, DECREASE_LEVERAGE -> {
-                    if (changeLeverage(decision.getSymbol(), decision.getTargetLeverage(), decision.getReason())) {
-                        // Leverage change is logged but doesn't need separate list tracking
-                        log.info("Leverage changed for {}: now {}x", 
-                                decision.getSymbol(), decision.getTargetLeverage());
-                    }
-                }
                 case KEEP -> {
                     keptPositions.add(decision.getSymbol());
                     log.debug("Keeping position {}: {}", decision.getSymbol(), decision.getReason());
@@ -333,9 +326,9 @@ public class PortfolioManagerService {
                 continue;
             }
 
-            log.info("New opportunity: {} {} (conviction: {}, leverage: {})",
+            log.info("New opportunity: {} {} (conviction: {})",
                     opportunity.getDirection(), opportunity.getSymbol(),
-                    opportunity.getConviction(), opportunity.getLeverage());
+                    opportunity.getConviction());
 
             OpenedPositionInfo info = openNewPosition(opportunity, state);
             if (info != null) {
@@ -488,40 +481,6 @@ public class PortfolioManagerService {
         }
     }
 
-    /**
-     * Change leverage on a position.
-     * Delegates to PositionService.changeLeverage() which handles:
-     * - Margin validation and reallocation
-     * - Liquidation price recalculation
-     * - Accounting ledger entries
-     */
-    private boolean changeLeverage(String symbol, int targetLeverage, String reason) {
-        try {
-            PositionDTO position = positionService.getPositionBySymbol(symbol);
-            if (position == null) {
-                log.warn("Cannot change leverage for {} - position not found", symbol);
-                return false;
-            }
-
-            if (position.getLeverage() == targetLeverage) {
-                log.info("Leverage already at {}x for {}", targetLeverage, symbol);
-                return true;
-            }
-
-            // Delegate to PositionService which handles margin management
-            positionService.changeLeverage(position.getId(), targetLeverage, reason);
-            
-            log.info("Changed leverage for {} from {}x to {}x - Reason: {}",
-                    symbol, position.getLeverage(), targetLeverage, reason);
-
-            return true;
-
-        } catch (Exception e) {
-            log.error("Failed to change leverage for {}: {}", symbol, e.getMessage());
-            return false;
-        }
-    }
-
     private OpenedPositionInfo openNewPosition(NewOpportunity opportunity, TraderState state) {
         try {
             String symbol = opportunity.getSymbol().toUpperCase();
@@ -542,19 +501,33 @@ public class PortfolioManagerService {
             // Get available cash from accounting ledger
             BigDecimal availableCash = accountingService.getCashBalance();
 
-            // Calculate position size based on conviction
-            BigDecimal baseSizePercent = positionSizePercent;
-            if (opportunity.getConviction() >= 80) {
-                baseSizePercent = baseSizePercent.multiply(BigDecimal.valueOf(1.5)); // 50% larger for high conviction
+            // Position size determined by Grok - NO FIXED LIMITS
+            // Grok provides position_size_percent (1-100%) based on conviction
+            BigDecimal sizePercent;
+            if (opportunity.getPositionSizePercent() != null && opportunity.getPositionSizePercent() > 0) {
+                // Use Grok's recommended size (1-100% of available capital)
+                sizePercent = BigDecimal.valueOf(opportunity.getPositionSizePercent())
+                        .divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
+                log.info("Using Grok-determined position size: {}% for {} (conviction: {})", 
+                        opportunity.getPositionSizePercent(), symbol, opportunity.getConviction());
+            } else {
+                // Fallback: use conviction-based sizing if Grok didn't provide size
+                // High conviction (80+) = 30%, Medium (60-79) = 15%
+                sizePercent = opportunity.getConviction() >= 80 
+                        ? BigDecimal.valueOf(0.30) 
+                        : BigDecimal.valueOf(0.15);
+                log.info("Fallback position size: {}% for {} (conviction: {})", 
+                        sizePercent.multiply(BigDecimal.valueOf(100)), symbol, opportunity.getConviction());
             }
 
             BigDecimal sizeUsdt = availableCash
-                    .multiply(baseSizePercent)
+                    .multiply(sizePercent)
                     .setScale(2, RoundingMode.HALF_UP);
 
+            // Only check if we have enough cash - no artificial upper limit
             if (sizeUsdt.compareTo(availableCash) > 0) {
-                log.warn("Insufficient capital for {}", symbol);
-                return null;
+                sizeUsdt = availableCash; // Use all available if requested more
+                log.info("Adjusted position size to available cash: {} USD", sizeUsdt);
             }
 
             // Minimum position size check
@@ -580,7 +553,6 @@ public class PortfolioManagerService {
                         result.getPrice(),
                         result.getQuantity(),
                         sizeUsdt,
-                        opportunity.getLeverage(),
                         opportunity.getConviction(),
                         opportunity.getReason(),
                         opportunity.getPreMortem(),
@@ -607,16 +579,16 @@ public class PortfolioManagerService {
                 // Update statistics in trader state (for reporting only, not for capital tracking)
                 state.setTotalFeesPaid(state.getTotalFeesPaid().add(result.getFee()));
 
-                log.info("Opened {} {} @ {} (conviction: {}, leverage: {}x, size: {} USD)",
+                log.info("Opened {} {} @ {} (conviction: {}, size: {} USD = {}% of available)",
                         direction, symbol, result.getPrice(),
-                        opportunity.getConviction(), opportunity.getLeverage(), sizeUsdt);
+                        opportunity.getConviction(), sizeUsdt, 
+                        sizePercent.multiply(BigDecimal.valueOf(100)).setScale(0, RoundingMode.HALF_UP));
                 
                 return OpenedPositionInfo.builder()
                         .symbol(symbol)
                         .direction(direction)
                         .entryPrice(result.getPrice())
                         .sizeUsd(sizeUsdt)
-                        .leverage(opportunity.getLeverage())
                         .conviction(opportunity.getConviction())
                         .reason(opportunity.getReason())
                         .build();
@@ -666,19 +638,17 @@ public class PortfolioManagerService {
             // Risk assessment
             String riskLevel = assessRisk(pnlPercent, holdTime);
 
-            sb.append(String.format("- %s: %s @ %s → %s (PnL: %s%%, Haltezeit: %s, Leverage: %dx) %s\n",
+            sb.append(String.format("- %s: %s @ %s → %s (PnL: %s%%, Haltezeit: %s) %s\n",
                     p.getSymbol(),
                     p.getDirection(),
                     p.getEntryPrice(),
                     currentPrice,
                     pnlPercent.setScale(2, RoundingMode.HALF_UP),
                     holdTimeStr,
-                    p.getLeverage(),
                     riskLevel));
             
             // Add YOUR TARGETS line if Pre-Mortem data is available
             if (p.getTargetPnlPercent() != null && p.getMaxAcceptableLossPercent() != null) {
-                BigDecimal targetRoe = p.getTargetPnlPercent().multiply(BigDecimal.valueOf(p.getLeverage()));
                 BigDecimal progressPercent = p.getTargetPnlPercent().compareTo(BigDecimal.ZERO) != 0
                         ? pnlPercent.divide(p.getTargetPnlPercent(), 1, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100))
                         : BigDecimal.ZERO;
@@ -687,9 +657,8 @@ public class PortfolioManagerService {
                         ? String.format("%d-%dh", p.getExpectedHoldHoursMin(), p.getExpectedHoldHoursMax())
                         : "n/a";
                 
-                sb.append(String.format("  📊 YOUR TARGETS: Target +%s%% (ROE +%s%%) | Stop -%s%% | Hold %s | Progress: %s%%\n",
+                sb.append(String.format("  📊 YOUR TARGETS: Target +%s%% | Stop -%s%% | Hold %s | Progress: %s%%\n",
                         p.getTargetPnlPercent().setScale(1, RoundingMode.HALF_UP),
-                        targetRoe.setScale(0, RoundingMode.HALF_UP),
                         p.getMaxAcceptableLossPercent().setScale(1, RoundingMode.HALF_UP),
                         holdRange,
                         progressPercent.setScale(0, RoundingMode.HALF_UP)));

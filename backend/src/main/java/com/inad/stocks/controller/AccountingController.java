@@ -111,6 +111,76 @@ public class AccountingController {
     }
 
     /**
+     * Get full accounting breakdown for debugging and visibility.
+     * Returns all account balances, cost breakdown, and reconciliation status.
+     */
+    @GetMapping("/breakdown")
+    public Map<String, Object> getAccountingBreakdown() {
+        Map<String, Object> breakdown = new HashMap<>();
+        
+        // Core balances
+        BigDecimal startingCapital = accountingService.getStartingCapitalFromLedger();
+        BigDecimal cash = accountingService.getCashBalance();
+        BigDecimal positionsValue = accountingService.getPositionsValue();
+        BigDecimal realizedPnl = accountingService.getRealizedPnl();
+        BigDecimal tradingCosts = accountingService.getTradingCosts();
+        
+        // Cost breakdown from metadata
+        BigDecimal totalFees = accountingService.getTotalFees();
+        BigDecimal totalSpread = accountingService.getTotalSpread();
+        BigDecimal totalSlippage = accountingService.getTotalSlippage();
+        
+        // Equity calculations
+        BigDecimal bookEquity = accountingService.getBookEquity(); // Cash + Positions (at cost)
+        BigDecimal expectedEquity = startingCapital.add(realizedPnl).subtract(tradingCosts);
+        
+        // Reconciliation
+        ReconciliationReport reconciliation = accountingService.reconcile();
+        
+        // Build response
+        breakdown.put("startingCapital", startingCapital);
+        breakdown.put("cashBalance", cash);
+        breakdown.put("positionsValue", positionsValue);
+        breakdown.put("realizedPnl", realizedPnl);
+        
+        // Cost breakdown
+        Map<String, BigDecimal> costBreakdown = new HashMap<>();
+        costBreakdown.put("totalTradingCosts", tradingCosts);
+        costBreakdown.put("fees", totalFees);
+        costBreakdown.put("spread", totalSpread);
+        costBreakdown.put("slippage", totalSlippage);
+        breakdown.put("costBreakdown", costBreakdown);
+        
+        // Equity analysis
+        breakdown.put("bookEquity", bookEquity);
+        breakdown.put("expectedEquity", expectedEquity);
+        breakdown.put("equityDiscrepancy", bookEquity.subtract(expectedEquity));
+        
+        // Account balances from reconciliation
+        breakdown.put("accountBalances", reconciliation.getAccountBalances());
+        
+        // Reconciliation status
+        Map<String, Object> reconciliationStatus = new HashMap<>();
+        reconciliationStatus.put("balanced", reconciliation.isBalanced());
+        reconciliationStatus.put("totalDebits", reconciliation.getTotalDebits());
+        reconciliationStatus.put("totalCredits", reconciliation.getTotalCredits());
+        reconciliationStatus.put("imbalance", reconciliation.getImbalance());
+        reconciliationStatus.put("discrepancies", reconciliation.getDiscrepancies());
+        breakdown.put("reconciliation", reconciliationStatus);
+        
+        // Metadata
+        breakdown.put("totalLedgerEntries", reconciliation.getTotalEntries());
+        breakdown.put("totalTransactions", reconciliation.getTotalTransactions());
+        breakdown.put("initialized", accountingService.isInitialized());
+        breakdown.put("timestamp", java.time.Instant.now().toString());
+        
+        log.info("Accounting breakdown requested - bookEquity={}, expectedEquity={}, balanced={}", 
+                bookEquity, expectedEquity, reconciliation.isBalanced());
+        
+        return breakdown;
+    }
+
+    /**
      * Health check - verify accounting system is working.
      */
     @GetMapping("/health")

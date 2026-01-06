@@ -30,8 +30,6 @@ public class PositionDTO {
     @JsonProperty("size_usd")
     private BigDecimal sizeUsd;
     
-    private Integer leverage;
-    
     @JsonProperty("stop_loss_price")
     private BigDecimal stopLossPrice;
     
@@ -63,22 +61,6 @@ public class PositionDTO {
     
     @JsonProperty("current_price")
     private BigDecimal currentPrice;
-    
-    @JsonProperty("liquidation_price")
-    private BigDecimal liquidationPrice;
-    
-    // Margin system fields
-    @JsonProperty("margin_mode")
-    private String marginMode;
-    
-    @JsonProperty("isolated_margin")
-    private BigDecimal isolatedMargin;
-    
-    @JsonProperty("maint_margin_rate")
-    private BigDecimal maintMarginRate;
-    
-    @JsonProperty("margin_risk")
-    private BigDecimal marginRisk;
     
     // Pre-Mortem / Self-Learning fields
     @JsonProperty("pre_mortem")

@@ -64,7 +64,7 @@ services:
         value: "600000"
       - key: STARTING_CAPITAL
         scope: RUN_TIME
-        value: "100000"
+        value: "1000000"
       - key: POSITION_SIZE_PCT
         scope: RUN_TIME
         value: "0.02"
