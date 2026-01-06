@@ -82,22 +82,8 @@ services:
       - key: MODE
         scope: RUN_TIME
         value: paper
-      - key: XAI_API_KEY
-        scope: RUN_TIME
-        type: SECRET
-        value: EV[1:73+mSZRqT3aQon7BNCofW4VikBxj4J1b:lGK1QfAqg6nVQ/qtG/zAQw==]
-      - key: BINANCE_API_KEY
-        scope: RUN_TIME
-        type: SECRET
-        value: EV[1:ZRPsm2uSlFeaGzH7JxYNmUgKqUVl/wNv:69kD16yBd61rSWeDexqzsQ==]
-      - key: BINANCE_API_SECRET
-        scope: RUN_TIME
-        type: SECRET
-        value: EV[1:zuNZBenaUpVQ9NYSL81DTS5rtghAvfYX:+mFycSANAPd4e8uC9u0yBA==]
-      - key: POLYGON_API_KEY
-        scope: RUN_TIME
-        type: SECRET
-        value: EV[1:DsQ5bTLTBba1EBQkyyrzRu1ckqhCFRcq:9lzMXyxqBRGCNGV8hpsm/Q==]
+      # Secrets are managed in DigitalOcean Dashboard (not in git)
+      # Required: XAI_API_KEY, POLYGON_API_KEY
       - key: CYCLE_INTERVAL
         scope: RUN_TIME
         value: "600000"
