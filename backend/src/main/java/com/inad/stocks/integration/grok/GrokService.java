@@ -335,7 +335,7 @@ public class GrokService {
             - scale_percent only used with EXTEND/REDUCE (10-100)
             - pre_mortem, bull_case, bear_case are REQUIRED for new opportunities!
             - LONG only - no SHORT positions allowed
-            - TARGET: 100%+ annual return - size aggressively!
+            - TARGET: 100%%+ annual return - size aggressively!
             
             ═══════════════════════════════════════════════════════════════════
             ANALYZE NOW - OUTPUT JSON ONLY
