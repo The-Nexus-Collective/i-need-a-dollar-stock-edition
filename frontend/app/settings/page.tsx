@@ -45,8 +45,7 @@ interface PortfolioManagerStatus {
       current_capital: number
       total_equity: number
       open_positions: number
-      max_positions: number
-      available_slots: number
+      // Position count is determined dynamically by Grok AI
       deployment: {
         deployment_percent: number
         below_minimum: boolean
@@ -229,7 +228,7 @@ export default function SettingsPage() {
                     <span className="text-sm text-text-secondary">Open Positions</span>
                   </div>
                   <span className="text-sm font-mono text-text-primary">
-                    {pmStatus.portfolio?.statistics?.open_positions || 0} / {pmStatus.portfolio?.statistics?.max_positions || 50}
+                    {pmStatus.portfolio?.statistics?.open_positions || 0}
                   </span>
                 </div>
 
@@ -290,16 +289,6 @@ export default function SettingsPage() {
                   </div>
                   <span className="text-sm font-mono text-text-primary">
                     {formatSeconds(pmStatus?.cycle_interval_seconds || 600)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between p-3 rounded-lg bg-void/30">
-                  <div className="flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-text-dim" />
-                    <span className="text-sm text-text-secondary">Max Positions</span>
-                  </div>
-                  <span className="text-sm font-mono text-text-primary">
-                    {pmStatus?.portfolio?.statistics?.max_positions || 50}
                   </span>
                 </div>
 

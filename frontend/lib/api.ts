@@ -865,8 +865,7 @@ class ApiClient {
           realized_pnl: number
           total_pnl: number
           open_positions: number
-          max_positions: number
-          available_slots: number
+          // Position count is determined dynamically by Grok AI
           total_trades: number
           winning_trades: number
           losing_trades: number

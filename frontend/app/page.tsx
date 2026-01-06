@@ -67,8 +67,7 @@ interface PortfolioStatistics {
   realized_pnl: number
   total_pnl: number
   open_positions: number
-  max_positions: number
-  available_slots: number
+  // Position count is determined dynamically by Grok AI - no max limits
   total_trades: number
   winning_trades: number
   losing_trades: number
@@ -1195,14 +1194,14 @@ export default function Dashboard() {
             className="glass-card p-4"
           >
             <div className="flex items-center justify-between mb-1">
-              <span className="text-label">Positions</span>
+              <span className="text-label">Open Positions</span>
               <BarChart3 className="w-5 h-5 text-purple-400" />
             </div>
             <div className="text-2xl font-mono font-semibold text-text-primary">
-              {stats?.open_positions || positions.length} / {stats?.max_positions || 5}
+              {stats?.open_positions || positions.length}
             </div>
             <div className="text-xs text-text-muted">
-              {stats?.available_slots || 0} slots available
+              Grok decides position count
             </div>
           </motion.div>
 
