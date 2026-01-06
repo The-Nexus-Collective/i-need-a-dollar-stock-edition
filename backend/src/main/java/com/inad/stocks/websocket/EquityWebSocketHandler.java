@@ -1,8 +1,12 @@
 package com.inad.stocks.websocket;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
+import com.inad.stocks.dto.PositionDTO;
+import com.inad.stocks.integration.broker.StockBrokerClient;
+import com.inad.stocks.service.AccountingService;
+import com.inad.stocks.service.PositionService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
@@ -11,7 +15,10 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -27,15 +34,27 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class EquityWebSocketHandler extends TextWebSocketHandler {
 
     private final Set<WebSocketSession> sessions = ConcurrentHashMap.newKeySet();
     private final ObjectMapper objectMapper;
     
+    @Autowired(required = false)
+    private PositionService positionService;
+    
+    @Autowired(required = false)
+    private AccountingService accountingService;
+    
+    @Autowired(required = false)
+    private StockBrokerClient stockBrokerClient;
+    
     private String currentPhase = "idle";
     private Long nextCycleAt = null;
     private int cycleNumber = 0;
+    
+    public EquityWebSocketHandler(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
@@ -101,6 +120,67 @@ public class EquityWebSocketHandler extends TextWebSocketHandler {
             "timestamp", Instant.now().toString()
         );
         broadcast(heartbeat);
+    }
+    
+    /**
+     * Broadcast equity data to all connected clients every 5 seconds.
+     * This provides the data for the equity chart on the frontend.
+     */
+    @Scheduled(fixedRate = 5000)
+    public void broadcastEquityUpdate() {
+        if (sessions.isEmpty() || positionService == null || accountingService == null) {
+            return;
+        }
+        
+        try {
+            // Get current positions and calculate equity with live prices
+            List<PositionDTO> positions = positionService.getOpenPositions();
+            BigDecimal cash = accountingService.getCashBalance();
+            
+            BigDecimal positionsValue = BigDecimal.ZERO;
+            BigDecimal unrealizedPnl = BigDecimal.ZERO;
+            
+            for (PositionDTO pos : positions) {
+                // Get current price for accurate valuation
+                BigDecimal currentPrice = pos.getEntryPrice(); // Default to entry
+                if (stockBrokerClient != null) {
+                    try {
+                        currentPrice = stockBrokerClient.getPrice(pos.getSymbol());
+                    } catch (Exception e) {
+                        // Use entry price if live price unavailable
+                    }
+                }
+                
+                // Calculate current value
+                BigDecimal currentValue = currentPrice.multiply(pos.getQuantity());
+                positionsValue = positionsValue.add(currentValue);
+                
+                // Calculate unrealized PnL
+                BigDecimal entryValue = pos.getEntryPrice().multiply(pos.getQuantity());
+                BigDecimal pnl = "LONG".equalsIgnoreCase(pos.getDirection()) 
+                        ? currentValue.subtract(entryValue)
+                        : entryValue.subtract(currentValue);
+                unrealizedPnl = unrealizedPnl.add(pnl);
+            }
+            
+            BigDecimal totalEquity = cash.add(positionsValue);
+            
+            Map<String, Object> equityData = new HashMap<>();
+            equityData.put("timestamp", Instant.now().getEpochSecond());
+            equityData.put("total_equity", totalEquity);
+            equityData.put("unrealized_pnl", unrealizedPnl);
+            equityData.put("cash", cash);
+            equityData.put("positions_value", positionsValue);
+            equityData.put("open_positions", positions.size());
+            
+            Map<String, Object> message = new HashMap<>();
+            message.put("type", "equity");
+            message.putAll(equityData);
+            
+            broadcast(message);
+        } catch (Exception e) {
+            log.debug("Failed to broadcast equity update: {}", e.getMessage());
+        }
     }
 
     /**
