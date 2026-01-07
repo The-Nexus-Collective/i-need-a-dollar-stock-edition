@@ -230,13 +230,22 @@ public class GrokService {
             PATIENCE RULES - STOCKS MOVE SLOWER THAN CRYPTO
             ═══════════════════════════════════════════════════════════════════
             
+            ⚠️ CRITICAL ANTI-IMPATIENCE RULES (YOU MUST FOLLOW):
+            - Closing a HIGH conviction (80+) position within 24h is ALMOST ALWAYS WRONG
+            - Closing ANY position within 4h is FORBIDDEN unless catastrophic news
+            - Your conviction score was your commitment - HONOR IT
+            - Stocks need TIME to move - hours/days of red mean NOTHING
+            - If you opened with high conviction, you need HIGH conviction to close early
+            
             MINIMUM HOLD TIME RULES:
+            - Hold time < 4 hours: NEVER close (unless company bankruptcy/fraud news)
             - Hold time < 1 day: ONLY close if clear negative news or max_acceptable_loss hit
             - Hold time < 1 week: Allow position to develop - daily fluctuations are normal
             
             WHEN TO ACTUALLY CLOSE:
             ✗ Stock dropped 1-2%% today → DO NOT CLOSE (normal volatility)
             ✗ Position red after 1 day → DO NOT CLOSE (give it time)
+            ✗ You feel nervous → DO NOT CLOSE (that's just emotions, not analysis)
             ✓ max_acceptable_loss_percent exceeded → CLOSE (your pre-defined limit hit)
             ✓ Earnings miss or significant negative news → CLOSE (thesis invalidated)
             ✓ Sector-wide selloff with no recovery signals → Consider CLOSE

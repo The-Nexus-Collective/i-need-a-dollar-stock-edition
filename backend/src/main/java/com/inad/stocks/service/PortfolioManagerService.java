@@ -659,11 +659,17 @@ public class PortfolioManagerService {
     }
 
     private String assessRisk(BigDecimal pnlPercent, Duration holdTime) {
+        // First check: TOO EARLY warning for young positions (unless catastrophic loss)
+        if (holdTime.toHours() < 24 && pnlPercent.compareTo(BigDecimal.valueOf(-25)) > 0) {
+            return "⏳ TOO EARLY TO JUDGE - minimum 24h before considering close!";
+        }
+        
+        // Critical loss takes priority regardless of hold time
         if (pnlPercent.compareTo(BigDecimal.valueOf(-25)) < 0) {
             return "🔴 DANGER: Critical loss";
         } else if (pnlPercent.compareTo(BigDecimal.valueOf(-15)) < 0) {
             return "🟡 WARNING: Heavy loss";
-        } else if (holdTime.toHours() > 48) {
+        } else if (holdTime.toHours() > 336) {  // 2 weeks - stocks need time!
             return "🟠 STALE: Consider rotation";
         } else if (pnlPercent.compareTo(BigDecimal.valueOf(40)) > 0) {
             return "💰 PROFIT: Consider taking gains";
